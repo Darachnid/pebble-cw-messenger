@@ -1,6 +1,7 @@
 #include <pebble.h>
 #include "send.h"
 #include "config.h"
+#include <message_keys.auto.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
