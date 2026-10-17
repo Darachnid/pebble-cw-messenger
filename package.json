@@ -1,7 +1,7 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "0.5.0",
+  "version": "0.6.0-preview",
   "keywords": [
     "pebble-app",
     "morse-code",
@@ -36,13 +36,20 @@
       "StartMode",
       "AutoPlay",
       "DemoSender",
-      "DemoMessage"
+      "DemoMessage",
+      "SmsSender",
+      "SmsBody",
+      "NotifEnabled",
+      "NotifApps"
     ],
     "resources": {
       "media": []
     },
     "capabilities": [
       "configurable"
+    ],
+    "usesPermissions": [
+      "Notifications"
     ]
   }
 }
