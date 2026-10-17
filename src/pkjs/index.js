@@ -3,7 +3,6 @@
 // owns the experimental built-in notifications/notification source.
 var Clay = require('@rebble/clay');
 var clayConfig = require('./config');
-var keys = require('message_keys');
 var clay = new Clay(clayConfig);
 
 var subscription = null;
@@ -16,8 +15,10 @@ var ready = false;
 
 function setting(name, fallback) {
   try {
-    var values = clay.getSettings();
-    var value = values && values[keys[name]];
+    // Clay.getSettings() requires the webview response; for background PKJS
+    // read Clay's persisted flattened settings by their string messageKey.
+    var values = JSON.parse(localStorage.getItem('clay-settings')) || {};
+    var value = values[name];
     return value === undefined || value === null ? fallback : value;
   } catch (e) {
     return fallback;
