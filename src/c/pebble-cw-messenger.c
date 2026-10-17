@@ -32,6 +32,7 @@ static CwSettings s_cfg;
 static char s_rx_sender[sizeof(s_cfg.sender)];
 static char s_rx_text[sizeof(s_cfg.demo_text)];
 static bool s_live_message;
+static bool s_pending_sms_playback;
 static Window *s_window;
 static TextLayer *s_sender_layer;
 static TextLayer *s_message_layer;
@@ -428,6 +429,14 @@ static void window_load(Window *window) {
   layer_add_child(root, text_layer_get_layer(s_footer_layer));
 }
 
+static void window_appear(Window *window) {
+  (void)window;
+  if (s_pending_sms_playback) {
+    s_pending_sms_playback = false;
+    if (s_cfg.autoplay) start_playback();
+  }
+}
+
 static void window_unload(Window *window) {
   (void)window;
   text_layer_destroy(s_footer_layer);
@@ -456,9 +465,14 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     s_live_message = true;
     if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
     if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
-    // Only start sound if Receive is visible, not while someone is keying.
-    if (window_stack_get_top_window() == s_window && s_cfg.autoplay) {
-      start_playback();
+    // Incoming SMS becomes the active receive message. Never trample a
+    // partly typed reply or interrupt an active straight key / paddle.
+    s_pending_sms_playback = s_cfg.autoplay;
+    if (window_stack_get_top_window() == s_window) {
+      s_pending_sms_playback = false;
+      if (s_cfg.autoplay) start_playback();
+    } else if (cw_send_can_auto_switch()) {
+      window_stack_pop(true); // Receive .appear plays the new text.
     }
     return;
   }
@@ -489,11 +503,13 @@ static void init(void) {
   s_volume = (uint8_t)s_cfg.volume;
   s_sync_ms = (int16_t)s_cfg.sync_ms;
   app_message_register_inbox_received(inbox_received);
-  app_message_open(512, 128);
+  // Outbox must fit 160-character decoded CW draft + AppMessage overhead.
+  app_message_open(512, 256);
   s_window = window_create();
   window_set_click_config_provider(s_window, clicks);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = window_load,
+    .appear = window_appear,
     .unload = window_unload
   });
   // Start in the user-configured mode, preserving the tested RX and TX paths.
