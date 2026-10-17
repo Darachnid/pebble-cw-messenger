@@ -1,6 +1,7 @@
 #include "config.h"
 #include <message_keys.auto.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define CW_SETTINGS_KEY 918
 #define CW_SETTINGS_VERSION 1
@@ -65,8 +66,34 @@ void cw_settings_save(const CwSettings *config) {
 static bool read_number(DictionaryIterator *iter, uint32_t key,
                         int32_t *dest, int32_t min, int32_t max) {
   Tuple *t = dict_find(iter, key);
-  if (!t) return false;
-  *dest = bounded(t->value->int32, min, max);
+  if (!t || !t->value) return false;
+  int32_t number = 0;
+  // Pebble AppMessage encodes toggles as 1 byte and some sliders as 4.
+  // Reading int32 unconditionally can use bytes beyond a 1-byte tuple.
+  if (t->type == TUPLE_UINT) {
+    if (t->length == 1) number = t->value->uint8;
+    else if (t->length == 2) number = t->value->uint16;
+    else if (t->length == 4) number = (int32_t)t->value->uint32;
+    else return false;
+  } else if (t->type == TUPLE_INT) {
+    if (t->length == 1) number = t->value->int8;
+    else if (t->length == 2) number = t->value->int16;
+    else if (t->length == 4) number = t->value->int32;
+    else return false;
+  } else if (t->type == TUPLE_CSTRING && t->length > 0) {
+    const char *str = t->value->cstring;
+    if (!strcmp(str, "true")) number = 1;
+    else if (!strcmp(str, "false")) number = 0;
+    else {
+      char *end = NULL;
+      long parsed = strtol(str, &end, 10);
+      if (end == str || *end != '\0') return false;
+      number = (int32_t)parsed;
+    }
+  } else {
+    return false;
+  }
+  *dest = bounded(number, min, max);
   return true;
 }
 
