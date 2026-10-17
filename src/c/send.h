@@ -7,5 +7,7 @@
 // The caller retains ownership of the receiving screen and its audio state.
 void cw_send_open(const CwSettings *settings);
 void cw_send_deinit(void);
+// Safely switch to Receive only when there is no active or drafted CW.
+bool cw_send_can_auto_switch(void);
 
 #endif
