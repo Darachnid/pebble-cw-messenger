@@ -490,6 +490,13 @@ void cw_send_open(const CwSettings *settings) {
   window_stack_push(s_window, true);
 }
 
+bool cw_send_can_auto_switch(void) {
+  return s_window && window_stack_get_top_window() == s_window &&
+         s_active && s_text_length == 0 && !s_code_length &&
+         !s_paddle_mark && !s_straight_held &&
+         !s_up_held && !s_down_held;
+}
+
 void cw_send_deinit(void) {
   stop_session();
   if (s_confirm_window) {
