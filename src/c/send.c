@@ -7,8 +7,6 @@
 
 #define TX_TEXT_CAP 160
 #define TX_CODE_CAP 12
-#define TX_PCM_RATE 16000u
-#define TX_PCM_CHUNK 160u
 #define TX_VIBE_MAX 10000u
 
 typedef struct {
@@ -42,7 +40,6 @@ static AppTimer *s_mark_timer;
 static AppTimer *s_gap_timer;
 static AppTimer *s_letter_timer;
 static AppTimer *s_word_timer;
-static AppTimer *s_audio_timer;
 
 static uint16_t s_wpm = 20;
 static uint16_t s_frequency = 600;
@@ -55,8 +52,6 @@ static bool s_up_pending;
 static bool s_down_pending;
 static bool s_straight_held;
 static bool s_paddle_mark;
-static bool s_key_on;
-static bool s_audio_open;
 static int8_t s_last_paddle; // +1 for UP (dit); -1 for DOWN (dah)
 static char s_mark_symbol;
 static char s_text[TX_TEXT_CAP + 1];
@@ -66,10 +61,6 @@ static uint8_t s_code_length;
 static uint32_t s_press_start;
 static uint32_t s_last_mark_end;
 static uint32_t s_vibration_duration;
-static uint32_t s_phase;
-static uint16_t s_pcm_offset;
-static uint16_t s_pcm_count;
-static int8_t s_pcm[TX_PCM_CHUNK];
 static char s_footer_text[48];
 
 // UTC with millisecond resolution. Unsigned subtraction handles rollover.
@@ -172,9 +163,21 @@ static void record_symbol(char symbol) {
   schedule_decode();
 }
 
+// Live keying must NOT continuously pre-buffer PCM. The previous pump
+// queued 30 ms of audio every 10 ms, building an arbitrarily long backlog.
+// Use Pebble's direct square-wave tone generator on each physical key edge
+// and stop it together with the vibration on key-up instead.
 static void key_down(uint32_t duration_ms) {
-  s_key_on = true;
-  s_vibration_duration = duration_ms > TX_VIBE_MAX ? TX_VIBE_MAX : duration_ms;
+  // Clear any previous note or draining audio from the speaker immediately.
+  speaker_stop();
+  const uint32_t tone_ms = duration_ms > TX_VIBE_MAX ? TX_VIBE_MAX : duration_ms;
+  // Initiate the speaker request before vibration to minimize perceived lag.
+  if (!speaker_play_tone(s_frequency, tone_ms, s_volume,
+                         SpeakerWaveformSquare)) {
+    APP_LOG(APP_LOG_LEVEL_WARNING, "TX tone failed: %u Hz, %lu ms",
+            (unsigned)s_frequency, (unsigned long)tone_ms);
+  }
+  s_vibration_duration = tone_ms;
   VibePattern vibe = {
     .durations = &s_vibration_duration,
     .num_segments = 1
@@ -183,33 +186,10 @@ static void key_down(uint32_t duration_ms) {
 }
 
 static void key_up(void) {
-  s_key_on = false;
+  // Flush rather than drain queued sound. Do this on the actual button-up
+  // event, NOT at character decode time.
+  speaker_stop();
   vibes_cancel();
-}
-
-// Continuous 600-Hz square PCM carrier with digital hard on/off keying.
-// Buffer latency is bounded but must be checked on real hardware.
-static void audio_pump(void *context) {
-  (void)context;
-  s_audio_timer = NULL;
-  if (!s_active || !s_audio_open) return;
-  for (uint8_t attempts = 0; attempts < 3; ++attempts) {
-    if (s_pcm_offset == s_pcm_count) {
-      s_pcm_offset = 0;
-      s_pcm_count = TX_PCM_CHUNK;
-      for (uint16_t i = 0; i < TX_PCM_CHUNK; ++i) {
-        s_pcm[i] = s_key_on ?
-          (s_phase < TX_PCM_RATE / 2 ? 48 : -48) : 0;
-        s_phase += s_frequency;
-        if (s_phase >= TX_PCM_RATE) s_phase -= TX_PCM_RATE;
-      }
-    }
-    uint32_t written = speaker_stream_write(
-      s_pcm + s_pcm_offset, s_pcm_count - s_pcm_offset);
-    s_pcm_offset += (uint16_t)written;
-    if (!written) break;
-  }
-  s_audio_timer = app_timer_register(10, audio_pump, NULL);
 }
 
 static void begin_paddle(void);
@@ -322,10 +302,7 @@ static void stop_session(void) {
   cancel_timer(&s_gap_timer);
   cancel_timer(&s_letter_timer);
   cancel_timer(&s_word_timer);
-  cancel_timer(&s_audio_timer);
   key_up();
-  speaker_stop();
-  s_audio_open = false;
 }
 
 static void window_load(Window *window) {
@@ -408,18 +385,13 @@ void cw_send_open(uint16_t wpm, uint16_t tone_hz, uint8_t volume) {
   s_up_pending = s_down_pending = false;
   s_last_paddle = 0;
   s_paddle_mark = false;
-  s_key_on = false;
   s_text[0] = '\0';
   s_text_length = 0;
   s_code[0] = '\0';
   s_code_length = 0;
   s_last_mark_end = 0;
-  s_pcm_count = s_pcm_offset = 0;
-  s_phase = 0;
   s_active = true;
   window_stack_push(s_window, true);
-  s_audio_open = speaker_stream_open(SpeakerPcmFormat_16kHz_8bit, s_volume);
-  if (s_audio_open) audio_pump(NULL);
 }
 
 void cw_send_deinit(void) {
