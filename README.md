@@ -1,96 +1,87 @@
-# CW Messenger for Pebble Time 2
+# CW Messenger — Pebble Time 2
 
-Read incoming messages as Morse code via watch speaker and haptics. Current revision is a **self-contained simulated message**; it does not yet capture phone notifications.
+## v0.5 — Pebble phone-app settings (hardware validation pending)
 
-## v0.4 – Send mode opens by default
+The Pebble phone app's **CW Messenger → Settings** gear is implemented with
+[Clay](https://developer.repebble.com/guides/user-interfaces/app-configuration/).
+Clay renders the form offline inside the existing Pebble app (no separate website or
+Android settings app). Preferences are saved on the watch and applied at the next
+receive playback or Send-mode session.
 
-**When you launch the watchapp it now opens straight into SEND CW**, not the Receive demo. No hidden long press required.
+Configurable in the phone app:
+- WPM: 5–40 (default 20)
+- Square-wave CW pitch: 200–1500 Hz (default 600)
+- Speaker volume: 0–100% (default 60%)
+- Receive speaker and receive vibration independently
+- Send sidetone and send vibration independently
+- Swap Up/Down paddle assignments
+- Straight-key dah threshold: 125–300% of one dit (default 200%)
+- Receive haptic offset: -300 through +400 ms (default +80, retained from v0.4)
+- Startup screen: Send (default) or Receive
+- Autoplay on opening Receive
+- Simulated sender and simulated message for hardware testing
 
-- Top bar: SEND CW
-- Body: decoded local CW draft and straight-key/paddle instructions
-- Bottom: WPM and Hz
-- UP = dit, DOWN = dah, SELECT = straight key, BACK = return to Receive
-- The previous receive test stays one Back press away; tap Select there to replay it
+The already-tested Receive square-wave PCM engine and haptic pattern are retained.
+Send uses direct keyed square-wave tones, so it does not build an audio queue.
+The existing Receive **hold Select** sync-calibration gesture is retained.
 
-Hold Down in Receive to return to Send. You must install the new PBW after git pull and pebble build to see this change.
+**The SMS companion is deliberately not installed in v0.5.** PebbleKit JS
+configuration and PebbleKit Android 2 simultaneous routing require hardware
+validation; there is no default SMS access or outbound messaging yet.
+The work to implement the companion belongs behind a tested integration gate.
 
-## v0.3 – synchronized Morse playback
-
-- Sender top strip: **Ben**
-- Message body: **good night bens best**
-- Bottom strip: **20 WPM | 600 Hz**
-- No app title, debug lines, or on-screen button instructions
-- The demo begins automatically when opened; **Select** replays it
-- One continuous, **16 kHz signed 8-bit PCM stream**. A constant-amplitude **600 Hz 50%-duty square wave** is gated directly on/off; every Morse space is encoded as actual zero-valued PCM samples. No software attack, decay, fade, reverb, or release tail is applied.
-- Timing: 20 WPM, one dit = 60 ms, one dah = 180 ms, inter-element silence = 60 ms, inter-letter silence = 180 ms, inter-word silence = 420 ms. Stream timing is determined by **PCM sample counts**, not repeated one-shot tone restarts or app timer accuracy.
-- **Haptics now use one complete `VibePattern` containing the same mark/space durations** as audio instead of per-element `AppTimer`s. This eliminates cumulative callback drift. PCM still has initial playback-buffer latency, so the watch has a calibration adjustment.
-- Up/Down adjust volume; Back once stops speaker audio, again disables haptics; double Back within 400 ms stops playback. The single click is delayed by the multi-click detection window. Back exits when not playing.
-
-### Sync calibration on the watch
-
-1. Hold **Select** for 700 ms to show `SYNC +80 ms` (initial default).
-2. While in calibration, **Up / Down** adjust by 10 ms. Positive delays vibration relative to PCM; negative adds leading silence to PCM.
-3. Tap **Select** to replay the test message using the new offset.
-4. Hold **Select** again to return the bottom strip to `20 WPM | 600 Hz`. Up/Down once again change speaker volume.
-5. Calibration is stored with Pebble persistent storage and survives app restarts.
-
-If you hear the sound **after** the vibration, increase the sync value (+10 ms per press). If you hear the sound **before** the vibration, decrease the value (-10 ms per press).
-
-### Known limitations
-
-- **Physical speaker ringing** and Pebble's audio pipeline may still cause audible acoustic tails even though the emitted PCM signal is hard-gated. Real-watch listening is necessary to assess this.
-- Vibration is driven by the Pebble OS custom-pattern engine. It avoids timer drift, but PCM startup buffering, actuator response, and firmware timing can still introduce a fixed mismatch. Use sync calibration while listening on hardware.
-- WPM, Hz, and text are still C constants until configuration and notification transport are implemented.
-- No incoming Android notification integration in this demo.
-
-## Build and deploy from `manjo`
+## Build/install on `manjo`
 
 ```bash
 cd ~/pebble-cw-messenger
-git pull origin main
+git pull --ff-only origin main
+pebble package install @rebble/clay
 pebble build
 pebble install --cloudpebble
 ```
 
-Direct Pebble SDK references: [Speaker and PCM](https://developer.repebble.com/docs/c/User_Interface/Speaker/) · [Clicks](https://developer.repebble.com/docs/c/User_Interface/Window/).
+If the SDK reports missing JS dependency, delete **only** stale build artifacts
+using `rm -rf build`, then rerun `pebble package install @rebble/clay` and
+`pebble build`. Do not delete the source repository.
 
-## Send / Practice — v0.4.1 low-latency sidetone fix
+Settings should appear next to the installed app in the Pebble phone app.
+After saving, reopen the watchapp and replay the message; the bottom bar should
+reflect your chosen WPM and Hz. In Send mode, hold a paddle to verify its speed
+and use Select as the straight key. Test the reverse-paddle switch separately.
 
-Send starts when the app opens. Receive is still available with Back.
+## Current mode controls
 
-| Button | Action |
-| --- | --- |
-| Up | Dit: 60 ms at 20 WPM |
-| Down | Dah: 180 ms at 20 WPM |
-| Hold Up or Down | Repeat elements at one-unit spacing |
-| Hold both | Alternate dits and dahs (basic squeeze, not iambic A/B) |
-| Select | Straight key: physical press starts sound and vibration; physical release stops both |
-| Back | Return to the previous Receive demo |
+| Mode | Button | Action |
+| --- | --- | --- |
+| Send | Up / Down | Dit / Dah (reversible in Settings) |
+| Send | Hold Up / Down | Repeated dits/dahs |
+| Send | Select | Straight key on button down/up |
+| Send | Back | Return to Receive |
+| Receive | Select | Replay demo text |
+| Receive | Up / Down | Volume (or sync +/-10 ms in calibration) |
+| Receive | Hold Select | Toggle sync calibration |
+| Receive | Hold Down | Open Send mode |
+| Receive | Back | Mute or stop playback |
 
-**Fix:** The old Send PCM pump could enqueue 30 ms every 10 ms. That
-created an increasingly long audio queue, so a keyed sound could be heard
-*after* its symbol had already been decoded. Send now calls
-`speaker_play_tone(..., SpeakerWaveformSquare)` on each key-down and
-`speaker_stop()` on each key-up, alongside the vibration start/stop.
-No Send PCM stream is left open and no audio is pre-buffered during silence.
+## SMS architecture and approval gate
 
-Both paddle timings and straight-key timing remain based on 20 WPM. Each
-paddle plays the exact target note duration, and straight-key sound is cut
-off on release. The SDK's note duration limit is 10 seconds, so a straight
-key held beyond 10 seconds will become silent until released.
+The eventual Android companion should use **NotificationListenerService**
+with explicit user permission and a narrow allowlist of SMS/messaging apps.
+It will parse permitted sender/body notifications and send them to the Pebble
+watch via **PebbleKit Android 2**. Direct `READ_SMS` is unnecessary for
+incoming notifications. Raw message contents should not be logged.
 
-**Hardware test required:** The speaker's own startup latency and acoustic
-ringing can still make audio edges less immediate than haptics, but the
-ever-growing delayed-PCM queue is eliminated. Receive retains its existing
-sample-accurate PCM plus precomputed full-length vibration pattern and sync.
+PebbleKit JS hosts the Clay settings; the Pebble platform's mixed native/JS
+AppMessage routing is version-sensitive. We should validate these separately:
 
-The current screen shows a decoded local draft (letters after 3 units of
-silence, word spaces after 7), plus the partial Morse character. Sending
-does not yet transmit SMS or other messages.
-## Roadmap
+1. Phone Settings opens and values persist to the watch.
+2. A companion installed on Android can send a synthetic message to the
+   active watchapp while Clay/PKJS is present.
+3. Notification listener permission works and selected SMS notifications
+   reach the watch without accidental duplication or private-content leakage.
+4. Incoming audio begins only under the user's configured privacy policy.
+5. Sending text from the watch opens a **user-confirmed SMS intent** on the
+   phone; never silently send or request SEND_SMS just for convenience.
 
-1. Measure real hardware audio gating, onset and offset; characterize haptic/audio latency.
-2. Configure tone frequency, WPM and playback mode using Pebble's phone app settings.
-3. Receive phone notifications and populate sender/message fields.
-4. Add sending paddles and straight-key decoder.
-5. Add opt-in text compression using standard CW abbreviations and optional AI summarization.
+We should not claim the whole SMS system works until those tests have passed
+on the specific Pebble app and Android firmware in use.
