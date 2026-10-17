@@ -85,3 +85,29 @@ AppMessage routing is version-sensitive. We should validate these separately:
 
 We should not claim the whole SMS system works until those tests have passed
 on the specific Pebble app and Android firmware in use.
+
+## Experimental Android SMS bridge (feature branch only)
+
+**Status:** Code prepared, but not yet SDK/Android-built or watch-tested. This is NOT a final release.
+
+- Android project: android/ (import into Android Studio).
+- PebbleKit Android 2: io.rebble.pebblekit2:client:1.3.2.
+- NotificationListenerService listens ONLY to notifications from the default SMS app.
+- Nothing is forwarded until both Android Notification Access and the helper's explicit opt-in switch are enabled.
+- Android does not request READ_SMS, RECEIVE_SMS or SEND_SMS.
+- Watch receives SmsSender (key 14) and SmsBody (key 15). Both match package.json.
+- Incoming SMS replaces the Receive sender/body and autoplays only when the Receive screen is visible and autoplay is enabled.
+- No SMS is transmitted outward, no server is contacted, and message text is not intentionally logged.
+- Sender and message are truncated to 31 and 120 chars for Pebble AppMessage.
+
+### Required tests before enabling real SMS
+
+1. On main (v0.5), build and verify the Pebble Settings page saves WPM/Hz and Send/Receive preferences.
+2. Build this branch and install the watchapp. In Settings set Startup screen = Receive.
+3. Import the android/ project into Android Studio and install the APK.
+4. BEFORE granting notification access, press Send a harmless test message in the Android helper.
+5. Confirm the watch shows CW Test / test message AND the Clay Settings screen still opens.
+6. Only after that succeeds, enable the helper's SMS toggle, grant Notification Access and test an actual incoming SMS.
+7. If mixed native + PKJS transport is supported, add a user-confirmed Android SMS composer for outgoing drafts.
+
+**Compatibility warning:** The Pebble docs traditionally say PKJS and native PebbleKit cannot be combined. Some newer builds allow native phone-to-watch messages alongside PKJS, but this route must be tested on your Pebble Android version. Watch-to-phone messages may still be routed exclusively to PKJS.
