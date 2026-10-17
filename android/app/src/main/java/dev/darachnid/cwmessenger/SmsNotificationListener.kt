@@ -68,7 +68,7 @@ class SmsNotificationListener : NotificationListenerService() {
         if (title.isBlank() || body.isBlank()) return
 
         val key = sbn.key
-        val signature = (title + "\u0000" + body).hashCode()
+        val signature = (title + "\u0000" + body + "\u0000" + sbn.postTime).hashCode()
         synchronized(sentRecently) {
             if (sentRecently[key] == signature) return
             // Reserve the in-flight message so rapid notification updates
