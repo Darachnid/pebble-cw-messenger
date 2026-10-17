@@ -165,7 +165,8 @@ static void update_footer(void) {
              (unsigned)MORSE_WPM, (unsigned)TONE_HZ);
   }
   if (!s_calibrating) {
-    if (s_audio_diagnostic) snprintf(s_footer, sizeof(s_footer), "SPEAKER OPEN FAILED");
+    if (s_cfg.receive_audio && speaker_is_muted()) snprintf(s_footer, sizeof(s_footer), "WATCH SOUND MUTED");
+    else if (s_audio_diagnostic) snprintf(s_footer, sizeof(s_footer), "SPEAKER OPEN FAILED");
     else if (!s_cfg.receive_audio) snprintf(s_footer, sizeof(s_footer), "RX AUDIO DISABLED");
     else if (!s_cfg.volume) snprintf(s_footer, sizeof(s_footer), "VOLUME = 0");
   }
