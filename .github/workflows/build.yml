@@ -15,10 +15,9 @@ jobs:
         run: |
           uv tool install --python 3.13 pebble-tool
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Install SDK and Clay
+      - name: Install Pebble SDK
         run: |
           pebble sdk install latest
-          pebble package install @rebble/clay
       - name: Build Time 2 PBW
         run: pebble build
       - uses: actions/upload-artifact@v4
@@ -38,6 +37,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.11.1
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Compile companion APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
