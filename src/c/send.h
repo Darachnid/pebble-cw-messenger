@@ -10,4 +10,6 @@ void cw_send_deinit(void);
 // Safely switch to Receive only when there is no active or drafted CW.
 bool cw_send_can_auto_switch(void);
 
+void cw_send_receive_review(const char *text);
+void cw_send_receive_status(const char *status);
 #endif
