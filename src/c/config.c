@@ -100,7 +100,7 @@ static bool read_number(DictionaryIterator *iter, uint32_t key,
 static bool read_text(DictionaryIterator *iter, uint32_t key,
                       char *dest, size_t length) {
   Tuple *t = dict_find(iter, key);
-  if (!t || t->type != TUPLE_CSTRING || !t->value->cstring) return false;
+  if (!t || t->type != TUPLE_CSTRING || t->length < 1) return false;
   strncpy(dest, t->value->cstring, length - 1);
   dest[length - 1] = '\0';
   return true;
