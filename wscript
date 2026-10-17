@@ -47,8 +47,5 @@ def build(ctx):
     ctx.env = cached_env
 
     ctx.set_group('bundle')
-    ctx.pbl_bundle(binaries=binaries,
-                   js=ctx.path.ant_glob(['src/pkjs/**/*.js',
-                                         'src/pkjs/**/*.json',
-                                         'src/common/**/*.js']),
-                   js_entry_file='src/pkjs/index.js')
+    # Native PebbleKit Android 2 must not be combined with PebbleKit JS.
+    ctx.pbl_bundle(binaries=binaries)
