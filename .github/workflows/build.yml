@@ -20,6 +20,8 @@ jobs:
           pebble sdk install latest
       - name: Build Time 2 PBW
         run: pebble build
+      - name: Verify native SMS transport and PBW
+        run: python3 scripts/validate-native-sms.py
       - uses: actions/upload-artifact@v4
         with:
           name: cw-messenger-sms-beta-watch
