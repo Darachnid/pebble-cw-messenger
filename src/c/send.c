@@ -90,7 +90,7 @@ static void cancel_timer(AppTimer **timer) {
 static void draw_message(void) {
   if (s_message_layer) {
     text_layer_set_text(s_message_layer, s_text_length ?
-                        s_text : "UP = dit   DOWN = dah\n\nSELECT = straight key");
+                        s_text : "UP: DIT   DOWN: DAH\n\nSELECT: STRAIGHT KEY");
   }
   if (s_code_layer) {
     text_layer_set_text(s_code_layer, s_code_length ? s_code : " ");
@@ -342,7 +342,7 @@ static void window_load(Window *window) {
   text_layer_set_text_color(s_title_layer, GColorWhite);
   text_layer_set_font(s_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_title_layer, GTextAlignmentCenter);
-  text_layer_set_text(s_title_layer, "TX DRAFT");
+  text_layer_set_text(s_title_layer, "SEND CW");
   layer_add_child(root, text_layer_get_layer(s_title_layer));
 
   s_message_layer = text_layer_create(
