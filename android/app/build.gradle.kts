@@ -1,10 +1,9 @@
 plugins {
   id("com.android.application")
-  id("org.jetbrains.kotlin.android")
 }
 android {
   namespace = "dev.darachnid.cwmessenger"
-  compileSdk = 35
+  compileSdk = 37
   defaultConfig {
     applicationId = "dev.darachnid.cwmessenger"
     minSdk = 26
@@ -16,7 +15,6 @@ android {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
   }
-  kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
   implementation("io.rebble.pebblekit2:client:1.3.2")
