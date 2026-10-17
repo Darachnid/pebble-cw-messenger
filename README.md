@@ -42,6 +42,25 @@ pebble install --cloudpebble
 
 Direct Pebble SDK references: [Speaker and PCM](https://developer.repebble.com/docs/c/User_Interface/Speaker/) · [Clicks](https://developer.repebble.com/docs/c/User_Interface/Window/).
 
+## Send / Practice (new local prototype)
+
+**Hold Down for 700 ms on the Receive screen** to open TX mode. Note: this slightly delays the volume-down single click on the Receive screen.
+
+| Button | Send behavior |
+| --- | --- |
+| Up | Dit (60 ms at 20 WPM) |
+| Down | Dah (180 ms at 20 WPM) |
+| Hold Up / Down | Repeat elements at one-unit spacing |
+| Hold both | Alternate elements (basic squeeze, not iambic A/B yet) |
+| Select | Straight key: press for sound, release to end; duration >= 2 units is a dah |
+| Back | Return to Receive |
+
+The TX screen shows a live decoded local draft and the current partial dot/dash pattern. Letters finalize after 3 units of silence; spaces after 7 units. Invalid Morse decodes to ?.
+
+A continuous 600 Hz hard-gated square-wave PCM sidetone plays while keying. The first send build requires on-device testing for button recognition, stream-buffer latency, speaker/haptic synchronization and power consumption. It currently has no messaging transport. TX drafting is local only and resets when you reopen it.
+
+Paddle reversal and settings will be implemented using the Pebble Android app later. The top and bottom buttons are mapped to dit and dah by default.
+
 ## Roadmap
 
 1. Measure real hardware audio gating, onset and offset; characterize haptic/audio latency.
