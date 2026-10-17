@@ -164,8 +164,10 @@ static void update_footer(void) {
     snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz",
              (unsigned)MORSE_WPM, (unsigned)TONE_HZ);
   }
-  if (s_audio_diagnostic && !s_calibrating) {
-    snprintf(s_footer, sizeof(s_footer), "SPEAKER UNAVAILABLE");
+  if (!s_calibrating) {
+    if (s_audio_diagnostic) snprintf(s_footer, sizeof(s_footer), "SPEAKER OPEN FAILED");
+    else if (!s_cfg.receive_audio) snprintf(s_footer, sizeof(s_footer), "RX AUDIO DISABLED");
+    else if (!s_cfg.volume) snprintf(s_footer, sizeof(s_footer), "VOLUME = 0");
   }
   if (s_footer_layer) text_layer_set_text(s_footer_layer, s_footer);
 }
