@@ -54,25 +54,39 @@ pebble install --cloudpebble
 
 Direct Pebble SDK references: [Speaker and PCM](https://developer.repebble.com/docs/c/User_Interface/Speaker/) · [Clicks](https://developer.repebble.com/docs/c/User_Interface/Window/).
 
-## Send / Practice (new local prototype)
+## Send / Practice — v0.4.1 low-latency sidetone fix
 
-**Hold Down for 700 ms on the Receive screen** to open TX mode. Note: this slightly delays the volume-down single click on the Receive screen.
+Send starts when the app opens. Receive is still available with Back.
 
-| Button | Send behavior |
+| Button | Action |
 | --- | --- |
-| Up | Dit (60 ms at 20 WPM) |
-| Down | Dah (180 ms at 20 WPM) |
-| Hold Up / Down | Repeat elements at one-unit spacing |
-| Hold both | Alternate elements (basic squeeze, not iambic A/B yet) |
-| Select | Straight key: press for sound, release to end; duration >= 2 units is a dah |
-| Back | Return to Receive |
+| Up | Dit: 60 ms at 20 WPM |
+| Down | Dah: 180 ms at 20 WPM |
+| Hold Up or Down | Repeat elements at one-unit spacing |
+| Hold both | Alternate dits and dahs (basic squeeze, not iambic A/B) |
+| Select | Straight key: physical press starts sound and vibration; physical release stops both |
+| Back | Return to the previous Receive demo |
 
-The TX screen shows a live decoded local draft and the current partial dot/dash pattern. Letters finalize after 3 units of silence; spaces after 7 units. Invalid Morse decodes to ?.
+**Fix:** The old Send PCM pump could enqueue 30 ms every 10 ms. That
+created an increasingly long audio queue, so a keyed sound could be heard
+*after* its symbol had already been decoded. Send now calls
+`speaker_play_tone(..., SpeakerWaveformSquare)` on each key-down and
+`speaker_stop()` on each key-up, alongside the vibration start/stop.
+No Send PCM stream is left open and no audio is pre-buffered during silence.
 
-A continuous 600 Hz hard-gated square-wave PCM sidetone plays while keying. The first send build requires on-device testing for button recognition, stream-buffer latency, speaker/haptic synchronization and power consumption. It currently has no messaging transport. TX drafting is local only and resets when you reopen it.
+Both paddle timings and straight-key timing remain based on 20 WPM. Each
+paddle plays the exact target note duration, and straight-key sound is cut
+off on release. The SDK's note duration limit is 10 seconds, so a straight
+key held beyond 10 seconds will become silent until released.
 
-Paddle reversal and settings will be implemented using the Pebble Android app later. The top and bottom buttons are mapped to dit and dah by default.
+**Hardware test required:** The speaker's own startup latency and acoustic
+ringing can still make audio edges less immediate than haptics, but the
+ever-growing delayed-PCM queue is eliminated. Receive retains its existing
+sample-accurate PCM plus precomputed full-length vibration pattern and sync.
 
+The current screen shows a decoded local draft (letters after 3 units of
+silence, word spaces after 7), plus the partial Morse character. Sending
+does not yet transmit SMS or other messages.
 ## Roadmap
 
 1. Measure real hardware audio gating, onset and offset; characterize haptic/audio latency.
