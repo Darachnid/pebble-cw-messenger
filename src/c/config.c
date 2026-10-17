@@ -2,6 +2,7 @@
 #include <message_keys.auto.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdlib.h>
 
 #define CW_SETTINGS_KEY 918
 #define CW_SETTINGS_VERSION 1
@@ -80,7 +81,7 @@ static bool read_number(DictionaryIterator *iter, uint32_t key,
     else if (t->length == 2) number = t->value->int16;
     else if (t->length == 4) number = t->value->int32;
     else return false;
-  } else if (t->type == TUPLE_CSTRING && t->value->cstring) {
+  } else if (t->type == TUPLE_CSTRING && t->length > 0) {
     const char *str = t->value->cstring;
     if (!strcmp(str, "true")) number = 1;
     else if (!strcmp(str, "false")) number = 0;
