@@ -11,6 +11,12 @@
 #define MAX_SEGMENTS 512
 #define PCM_CHUNK 512
 #define BACK_DOUBLE_MS 400
+#define SYNC_PREF_KEY 701
+// Positive = haptics later than audio; negative = audio samples start later.
+// Adjust in 10 ms increments on the watch (long SELECT to enter calibration).
+#define DEFAULT_SYNC_MS 80
+#define MIN_SYNC_MS (-300)
+#define MAX_SYNC_MS 400
 
 // Single, contiguous PCM stream: square carrier during marks, zero samples
 // during spaces. No envelopes, fades, simulated reverb, or per-dit restart.
@@ -23,12 +29,17 @@ static Window *s_window;
 static TextLayer *s_sender_layer;
 static TextLayer *s_message_layer;
 static TextLayer *s_footer_layer;
-static AppTimer *s_vibe_timer;
+static AppTimer *s_haptic_start_timer;
+static AppTimer *s_finish_timer;
 static AppTimer *s_pcm_timer;
 static MorseSegment s_segments[MAX_SEGMENTS];
 static uint16_t s_segment_count;
-static uint16_t s_vibe_cursor;
-static uint32_t s_vibe_duration;
+// This single full-length vibration pattern avoids a timer callback for
+// each dit/dah; the OS vibration engine handles all ON/OFF boundaries.
+static uint32_t s_haptic_durations[MAX_SEGMENTS];
+static uint32_t s_message_duration_ms;
+static int16_t s_sync_ms = DEFAULT_SYNC_MS;
+static bool s_calibrating;
 static uint8_t s_volume = 60;
 static bool s_playing;
 static bool s_audio_enabled = true;
@@ -40,6 +51,7 @@ static char s_footer[48];
 static uint16_t s_pcm_segment;
 static uint32_t s_pcm_samples_remaining;
 static uint32_t s_carrier_phase;
+static uint32_t s_leading_silence_samples;
 static int8_t s_pcm_chunk[PCM_CHUNK];
 static uint16_t s_pcm_size;
 static uint16_t s_pcm_offset;
@@ -131,6 +143,15 @@ static bool encode_message(const char *message) {
   return s_segment_count > 0;
 }
 
+static void update_footer(void) {
+  if (s_calibrating) {
+    snprintf(s_footer, sizeof(s_footer), "SYNC %+d ms", s_sync_ms);
+  } else {
+    snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz", MORSE_WPM, TONE_HZ);
+  }
+  if (s_footer_layer) text_layer_set_text(s_footer_layer, s_footer);
+}
+
 static void audio_stop(void) {
   if (s_pcm_timer) {
     app_timer_cancel(s_pcm_timer);
@@ -142,9 +163,13 @@ static void audio_stop(void) {
 }
 
 static void stop_playback(void) {
-  if (s_vibe_timer) {
-    app_timer_cancel(s_vibe_timer);
-    s_vibe_timer = NULL;
+  if (s_haptic_start_timer) {
+    app_timer_cancel(s_haptic_start_timer);
+    s_haptic_start_timer = NULL;
+  }
+  if (s_finish_timer) {
+    app_timer_cancel(s_finish_timer);
+    s_finish_timer = NULL;
   }
   audio_stop();
   vibes_cancel();
@@ -155,6 +180,11 @@ static void pcm_fill_chunk(void) {
   s_pcm_size = 0;
   s_pcm_offset = 0;
   while (s_pcm_size < PCM_CHUNK) {
+    if (s_leading_silence_samples) {
+      s_pcm_chunk[s_pcm_size++] = 0;
+      --s_leading_silence_samples;
+      continue;
+    }
     while (!s_pcm_samples_remaining) {
       if (s_pcm_segment == s_segment_count) {
         s_pcm_generated_all = true;
@@ -203,53 +233,95 @@ static void pcm_pump(void *context) {
   if (!s_pcm_timer) audio_stop();
 }
 
-static void vibe_next(void *context) {
+// A single custom vibe pattern uses the *same* mark/space durations as PCM.
+// Individual AppTimer callbacks no longer shift each successive dit or dah.
+static void start_haptics(void *context) {
   (void)context;
-  s_vibe_timer = NULL;
+  s_haptic_start_timer = NULL;
+  if (!s_playing || !s_haptics_enabled || !s_segment_count) return;
+  VibePattern pattern = {
+    .durations = s_haptic_durations,
+    .num_segments = s_segment_count
+  };
+  vibes_enqueue_custom_pattern(pattern);
+}
+
+static void check_finished(void *context) {
+  (void)context;
+  s_finish_timer = NULL;
   if (!s_playing) return;
-  if (s_vibe_cursor == s_segment_count) {
-    s_playing = false;
+  // Account for PCM queue drain time without ending the UI while audio
+  // is still audible.  The full haptic pattern has already completed.
+  if (s_audio_enabled && speaker_get_status() != SpeakerStatusIdle) {
+    s_finish_timer = app_timer_register(100, check_finished, NULL);
     return;
   }
-  MorseSegment segment = s_segments[s_vibe_cursor++];
-  if (segment.mark && s_haptics_enabled) {
-    s_vibe_duration = segment.duration_ms;
-    VibePattern pattern = {.durations = &s_vibe_duration, .num_segments = 1};
-    vibes_enqueue_custom_pattern(pattern);
-  } else if (!segment.mark) {
-    vibes_cancel();
-  }
-  s_vibe_timer = app_timer_register(segment.duration_ms, vibe_next, NULL);
-  if (!s_vibe_timer) stop_playback();
+  s_playing = false;
 }
 
 static void start_playback(void) {
   stop_playback();
   if (!encode_message(MESSAGE_TEXT)) return;
+  s_message_duration_ms = 0;
+  for (uint16_t i = 0; i < s_segment_count; ++i) {
+    s_haptic_durations[i] = s_segments[i].duration_ms;
+    s_message_duration_ms += s_segments[i].duration_ms;
+  }
+  // Encoding always starts with a mark, and OFF/ON alternates; the Pebble
+  // VibePattern format expects its first duration to be ON.
   s_audio_enabled = true;
   s_haptics_enabled = true;
   s_playing = true;
-  s_vibe_cursor = 0;
   s_pcm_segment = 0;
   s_pcm_samples_remaining = 0;
   s_carrier_phase = 0;
   s_pcm_size = 0;
   s_pcm_offset = 0;
   s_pcm_generated_all = false;
+  s_leading_silence_samples = s_sync_ms < 0 ?
+    (uint32_t)(-s_sync_ms) * (SAMPLE_RATE / 1000u) : 0;
+
   s_stream_open = speaker_stream_open(SpeakerPcmFormat_16kHz_8bit, s_volume);
+  // Feed PCM before scheduling the vibes to minimize initial stream
+  // starvation. The residual device-level latency is user-calibratable.
   if (s_stream_open) pcm_pump(NULL);
   else s_audio_enabled = false;
-  vibe_next(NULL);
+
+  if (s_sync_ms > 0 && s_audio_enabled) {
+    s_haptic_start_timer = app_timer_register(
+      (uint32_t)s_sync_ms, start_haptics, NULL);
+    if (!s_haptic_start_timer) start_haptics(NULL);
+  } else {
+    start_haptics(NULL);
+  }
+
+  uint32_t extra_delay = s_sync_ms > 0 ? (uint32_t)s_sync_ms :
+                          (uint32_t)(-s_sync_ms);
+  // Neither channel uses this timer to advance its Morse elements.
+  s_finish_timer = app_timer_register(
+    s_message_duration_ms + extra_delay + 500, check_finished, NULL);
 }
 
 static void volume_up(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  if (s_calibrating) {
+    if (s_sync_ms < MAX_SYNC_MS) s_sync_ms += 10;
+    persist_write_int(SYNC_PREF_KEY, s_sync_ms);
+    update_footer();
+    return;
+  }
   s_volume = s_volume >= 90 ? 100 : s_volume + 10;
   speaker_set_volume(s_volume);
 }
 
 static void volume_down(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  if (s_calibrating) {
+    if (s_sync_ms > MIN_SYNC_MS) s_sync_ms -= 10;
+    persist_write_int(SYNC_PREF_KEY, s_sync_ms);
+    update_footer();
+    return;
+  }
   s_volume = s_volume <= 10 ? 0 : s_volume - 10;
   speaker_set_volume(s_volume);
 }
@@ -257,6 +329,12 @@ static void volume_down(ClickRecognizerRef recognizer, void *context) {
 static void select_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   start_playback();
+}
+
+static void select_long(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer; (void)context;
+  s_calibrating = !s_calibrating;
+  update_footer();
 }
 
 static void back_single(ClickRecognizerRef recognizer, void *context) {
@@ -282,6 +360,7 @@ static void back_double(ClickRecognizerRef recognizer, void *context) {
 static void clicks(void *context) {
   (void)context;
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click);
+  window_long_click_subscribe(BUTTON_ID_SELECT, 700, select_long, NULL);
   window_single_click_subscribe(BUTTON_ID_UP, volume_up);
   window_single_click_subscribe(BUTTON_ID_DOWN, volume_down);
   window_single_click_subscribe(BUTTON_ID_BACK, back_single);
@@ -320,8 +399,7 @@ static void window_load(Window *window) {
   text_layer_set_text_color(s_footer_layer, GColorWhite);
   text_layer_set_font(s_footer_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_footer_layer, GTextAlignmentCenter);
-  snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz", MORSE_WPM, TONE_HZ);
-  text_layer_set_text(s_footer_layer, s_footer);
+  update_footer();
   layer_add_child(root, text_layer_get_layer(s_footer_layer));
 }
 
@@ -336,6 +414,10 @@ static void window_unload(Window *window) {
 }
 
 static void init(void) {
+  if (persist_exists(SYNC_PREF_KEY)) {
+    int stored = persist_read_int(SYNC_PREF_KEY);
+    if (stored >= MIN_SYNC_MS && stored <= MAX_SYNC_MS) s_sync_ms = stored;
+  }
   s_window = window_create();
   window_set_click_config_provider(s_window, clicks);
   window_set_window_handlers(s_window, (WindowHandlers) {
