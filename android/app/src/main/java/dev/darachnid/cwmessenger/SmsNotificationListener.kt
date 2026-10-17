@@ -67,6 +67,10 @@ class SmsNotificationListener : NotificationListenerService() {
         }
         if (title.isBlank() || body.isBlank()) return
 
+        // Bind the current incoming conversation to its explicit Android
+        // notification Reply action. Sender titles are not phone numbers.
+        CwReplySession.remember(sbn);
+
         val key = sbn.key
         val signature = (title + "\u0000" + body + "\u0000" + sbn.postTime).hashCode()
         synchronized(sentRecently) {
