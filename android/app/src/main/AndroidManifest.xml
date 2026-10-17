@@ -3,6 +3,7 @@
   <!-- Only Android notification access and optional outgoing-draft notification.
        No READ_SMS, RECEIVE_SMS or SEND_SMS. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.INTERNET" />
   <queries>
     <intent>
       <action android:name="android.intent.action.SENDTO"/>
@@ -12,7 +13,7 @@
   <application
       android:allowBackup="false"
       android:label="CW SMS Bridge"
-      android:usesCleartextTraffic="false"
+      android:usesCleartextTraffic="true"
       android:theme="@android:style/Theme.Material.Light.NoActionBar">
     <activity android:name=".MainActivity"
         android:exported="true">
