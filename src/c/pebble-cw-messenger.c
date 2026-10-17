@@ -157,7 +157,8 @@ static void update_footer(void) {
   if (s_calibrating) {
     snprintf(s_footer, sizeof(s_footer), "SYNC %+d ms", s_sync_ms);
   } else {
-    snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz", MORSE_WPM, TONE_HZ);
+    snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz",
+             (unsigned)MORSE_WPM, (unsigned)TONE_HZ);
   }
   if (s_footer_layer) text_layer_set_text(s_footer_layer, s_footer);
 }
@@ -455,8 +456,8 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
   // Do not confuse a live incoming SMS with a demo/config update.
   Tuple *sender = dict_find(iter, MESSAGE_KEY_SmsSender);
   Tuple *body = dict_find(iter, MESSAGE_KEY_SmsBody);
-  if (body && body->type == TUPLE_CSTRING && body->value->cstring) {
-    if (sender && sender->type == TUPLE_CSTRING && sender->value->cstring) {
+  if (body && body->type == TUPLE_CSTRING && body->length > 0) {
+    if (sender && sender->type == TUPLE_CSTRING && sender->length > 0) {
       strncpy(s_rx_sender, sender->value->cstring, sizeof(s_rx_sender) - 1);
       s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
     } else {
