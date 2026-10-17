@@ -6,8 +6,8 @@
 #include <stdio.h>
 
 // Values come from the saved Pebble phone-app settings.
-#define MESSAGE_SENDER (s_cfg.sender)
-#define MESSAGE_TEXT (s_cfg.demo_text)
+#define MESSAGE_SENDER (s_rx_sender)
+#define MESSAGE_TEXT (s_rx_text)
 #define MORSE_WPM (s_cfg.wpm)
 #define TONE_HZ (s_cfg.tone_hz)
 #define SAMPLE_RATE 16000u
@@ -29,6 +29,9 @@ typedef struct {
 } MorseSegment;
 
 static CwSettings s_cfg;
+static char s_rx_sender[sizeof(s_cfg.sender)];
+static char s_rx_text[sizeof(s_cfg.demo_text)];
+static bool s_live_message;
 static Window *s_window;
 static TextLayer *s_sender_layer;
 static TextLayer *s_message_layer;
@@ -437,7 +440,36 @@ static void window_unload(Window *window) {
 
 static void inbox_received(DictionaryIterator *iter, void *context) {
   (void)context;
+  // Inbound phone notifications share the AppMessage inbox with Clay.
+  // Do not confuse a live incoming SMS with a demo/config update.
+  Tuple *sender = dict_find(iter, MESSAGE_KEY_SmsSender);
+  Tuple *body = dict_find(iter, MESSAGE_KEY_SmsBody);
+  if (body && body->type == TUPLE_CSTRING && body->value->cstring) {
+    if (sender && sender->type == TUPLE_CSTRING && sender->value->cstring) {
+      strncpy(s_rx_sender, sender->value->cstring, sizeof(s_rx_sender) - 1);
+      s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
+    } else {
+      strcpy(s_rx_sender, "Message");
+    }
+    strncpy(s_rx_text, body->value->cstring, sizeof(s_rx_text) - 1);
+    s_rx_text[sizeof(s_rx_text) - 1] = '\0';
+    s_live_message = true;
+    if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
+    if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
+    // Only start sound if Receive is visible, not while someone is keying.
+    if (window_stack_get_top_window() == s_window && s_cfg.autoplay) {
+      start_playback();
+    }
+    return;
+  }
   if (!cw_settings_from_appmessage(&s_cfg, iter)) return;
+  // Refresh demo display only until a live SMS has been shown.
+  if (!s_live_message) {
+    strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender) - 1);
+    s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
+    strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text) - 1);
+    s_rx_text[sizeof(s_rx_text) - 1] = '\0';
+  }
   s_volume = (uint8_t)s_cfg.volume;
   s_sync_ms = (int16_t)s_cfg.sync_ms;
   if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
@@ -450,6 +482,10 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
 
 static void init(void) {
   cw_settings_load(&s_cfg);
+  strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender) - 1);
+  s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
+  strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text) - 1);
+  s_rx_text[sizeof(s_rx_text) - 1] = '\0';
   s_volume = (uint8_t)s_cfg.volume;
   s_sync_ms = (int16_t)s_cfg.sync_ms;
   app_message_register_inbox_received(inbox_received);
