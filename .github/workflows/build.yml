@@ -39,7 +39,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 9.3.1
-      - name: Install Android SDK 35
+      - name: Install Android API 37 and Build Tools 36
         run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
       - name: Compile companion APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
