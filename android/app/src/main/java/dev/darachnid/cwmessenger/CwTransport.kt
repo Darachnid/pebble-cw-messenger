@@ -24,4 +24,7 @@ internal object CwTransport {
     const val KEY_SENDER: UInt = 10014u
     const val KEY_BODY: UInt = 10015u
     const val KEY_DRAFT: UInt = 10016u
+    const val KEY_REVIEW: UInt = 10017u
+    const val KEY_CONFIRM: UInt = 10018u
+    const val KEY_STATUS: UInt = 10019u
 }
