@@ -1,7 +1,7 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "0.6.0-dev",
+  "version": "0.6.0-beta.1",
   "keywords": [
     "pebble-app",
     "morse-code",
@@ -38,7 +38,8 @@
       "DemoSender",
       "DemoMessage",
       "SmsSender",
-      "SmsBody"
+      "SmsBody",
+      "TxDraft"
     ],
     "resources": {
       "media": []
