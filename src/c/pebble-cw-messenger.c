@@ -11,7 +11,9 @@
 #define MORSE_WPM (s_cfg.wpm)
 #define TONE_HZ (s_cfg.tone_hz)
 #define SAMPLE_RATE 16000u
-#define MAX_SEGMENTS 512
+// Worst-case Morse punctuation uses up to 12 alternating mark/space
+// entries per character; 120-character SMS payloads need more than 512.
+#define MAX_SEGMENTS 1536
 #define PCM_CHUNK 512
 #define BACK_DOUBLE_MS 400
 #define SYNC_PREF_KEY 701
