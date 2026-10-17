@@ -1,14 +1,16 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "keywords": [
     "pebble-app",
     "morse-code",
     "cw"
   ],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "@rebble/clay": "^1.0.0"
+  },
   "pebble": {
     "displayName": "CW Messenger",
     "uuid": "24ae7051-9f15-42a3-805e-e4b4a22bc64d",
@@ -21,10 +23,26 @@
       "watchface": false
     },
     "messageKeys": [
-      "dummy"
+      "Wpm",
+      "ToneHz",
+      "Volume",
+      "RxAudio",
+      "RxVibe",
+      "TxAudio",
+      "TxVibe",
+      "ReversePaddles",
+      "StraightThreshold",
+      "SyncMs",
+      "StartMode",
+      "AutoPlay",
+      "DemoSender",
+      "DemoMessage"
     ],
     "resources": {
       "media": []
-    }
+    },
+    "capabilities": [
+      "configurable"
+    ]
   }
 }
