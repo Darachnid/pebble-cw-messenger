@@ -1,23 +1,21 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "1.0.0",
-  "keywords": ["pebble-app"],
+  "version": "0.1.0",
+  "keywords": [
+    "pebble-app",
+    "morse-code",
+    "cw"
+  ],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "pebble-cw-messenger",
+    "displayName": "CW Messenger",
     "uuid": "24ae7051-9f15-42a3-805e-e4b4a22bc64d",
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": [
-      "aplite",
-      "basalt",
-      "chalk",
-      "diorite",
-      "emery",
-      "flint",
-      "gabbro"
+      "emery"
     ],
     "watchapp": {
       "watchface": false

@@ -1,36 +1,48 @@
-# pebble-cw-messenger
+# Pebble CW Messenger
 
-A Pebble watchapp/watchface written in C using the Pebble SDK.
+Native Morse-code watchapp for the **Pebble Time 2 (emery)**.
 
-## Building & running
+## Working prototype (v0.1)
 
-```sh
-pebble build                          # build for all targetPlatforms
-pebble install --emulator emery       # install on the emery emulator
-pebble install --phone <ip>           # install to a paired phone
-```
+- Select starts/restarts a demo message: **SOS AC1RV**
+- International Morse code encoding for A-Z, 0-9, and common punctuation
+- PARIS timing ratios: dit=1, dah=3, intra-character gap=1, letter gap=3, word gap=7
+- 20 WPM, 600 Hz sine-wave audio and matching haptic patterns
+- Up/Down change speaker volume in 10% increments during playback
+- Back single click disables audio first, then vibration on a later single click
+- Back double click within 400 ms stops playback
+- Back exits the app while idle
+- Speaker system mute/Quiet Time still take precedence
 
-## Target platforms
+**MVP limitations:** Demo text, speed, and pitch are constants in the C source, not yet phone-app settings. No notification integration, keying, or AI yet. SDK app timers and vibration hardware may introduce playback jitter; physical CW accuracy and speaker/haptic synchronization still require testing on the Pebble Time 2. Back single-click is delayed by the double-click detection window.
 
-`targetPlatforms` in `package.json` controls which watches you build for. The
-modern Pebble hardware is **emery** (Pebble Time 2), **gabbro** (Pebble Round
-2), and **flint** (Pebble 2 Duo); the original Pebble platforms (aplite,
-basalt, chalk, diorite) are included by default for backwards compatibility.
+## Build and install
 
-## Project layout
+From your Pebble SDK computer:
 
-```
-src/c/           C source for the watchapp
-src/pkjs/        PebbleKit JS (phone-side) source, if any
-worker_src/c/    Background worker source, if any
-resources/       Images, fonts, and other bundled resources
-package.json     Project metadata (UUID, platforms, resources, message keys)
-wscript          Build rules — usually no need to edit
-```
+    git clone https://github.com/Darachnid/pebble-cw-messenger.git
+    cd pebble-cw-messenger
+    pebble build
+    pebble install --cloudpebble
 
-By default this project is configured as a watchapp. To make it a watchface,
-set `pebble.watchapp.watchface` to `true` in `package.json`.
+If you already cloned the project:
 
-## Documentation
+    cd ~/pebble-cw-messenger
+    git pull origin main
+    pebble build
 
-Full SDK docs, tutorials, and API reference: <https://developer.repebble.com>
+The Pebble emulator needs a graphical display (SDL). On a headless server, build normally and install on a paired watch instead.
+
+## Next milestones
+
+1. Measure real-world CW timing and address speaker/vibration scheduling drift.
+2. Add Pebble phone-app settings for WPM, tone frequency, audio, and haptics.
+3. Integrate Android notifications using an Android companion and evaluate phone settings compatibility.
+4. Implement configurable dit/dah paddle and middle-button straight key.
+5. Add explicit, meaning-preserving CW abbreviation rules and optional AI conversion.
+
+## SDK references
+
+- [Buttons and clicks](https://developer.repebble.com/docs/c/User_Interface/Clicks/)
+- [Speaker API](https://developer.repebble.com/docs/c/User_Interface/Speaker/)
+- [Vibration API](https://developer.repebble.com/docs/c/User_Interface/Vibes/)
