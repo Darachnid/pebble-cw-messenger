@@ -8,4 +8,5 @@ internal object CwTransport {
     // Pebble messageKeys are assigned sequentially, starting at zero.
     const val KEY_SENDER: UInt = 14u
     const val KEY_BODY: UInt = 15u
+    const val KEY_DRAFT: UInt = 16u
 }
