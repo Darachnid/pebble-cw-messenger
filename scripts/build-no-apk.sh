@@ -4,6 +4,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 pebble package install @rebble/clay
+# Pebble SDK version parser requires N.N.N with no prerelease suffixes.
+python3 - <<'PY'
+import json, re
+from pathlib import Path
+version = json.loads(Path("package.json").read_text())["version"]
+if not re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+", version):
+    raise SystemExit(f"Invalid Pebble app version {version!r}: expected N.N.N")
+print("Pebble app version:", version)
+PY
 pebble clean
 pebble build
 python3 - <<'PY'
