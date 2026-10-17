@@ -1,87 +1,103 @@
 # CW Messenger — Pebble Time 2
 
-## v0.5 — Pebble phone-app settings (hardware validation pending)
+## v0.6 Preview: incoming SMS notifications without a separate Android APK
 
-The Pebble phone app's **CW Messenger → Settings** gear is implemented with
-[Clay](https://developer.repebble.com/guides/user-interfaces/app-configuration/).
-Clay renders the form offline inside the existing Pebble app (no separate website or
-Android settings app). Preferences are saved on the watch and applied at the next
-receive playback or Send-mode session.
+**This branch uses the existing Pebble Android app**, its experimental built-in
+`notifications/notification` source, and PebbleKit JS to forward new permitted
+notifications to your CW Messenger watchapp. It does **not** use the experimental
+`android/` companion project from the older SMS branch.
 
-Configurable in the phone app:
-- WPM: 5–40 (default 20)
-- Square-wave CW pitch: 200–1500 Hz (default 600)
-- Speaker volume: 0–100% (default 60%)
-- Receive speaker and receive vibration independently
-- Send sidetone and send vibration independently
-- Swap Up/Down paddle assignments
-- Straight-key dah threshold: 125–300% of one dit (default 200%)
-- Receive haptic offset: -300 through +400 ms (default +80, retained from v0.4)
-- Startup screen: Send (default) or Receive
-- Autoplay on opening Receive
-- Simulated sender and simulated message for hardware testing
+The receive display shows the sender and decoded text while retaining the
+working 20 WPM/600 Hz square-wave and synchronized vibration paths. Sender,
+message, WPM and Hz appear as before. You can change timing and mode settings
+using the existing Clay settings page in the Pebble Android app.
 
-The already-tested Receive square-wave PCM engine and haptic pattern are retained.
-Send uses direct keyed square-wave tones, so it does not build an audio queue.
-The existing Receive **hold Select** sync-calibration gesture is retained.
+### Requirements on Android
 
-**The SMS companion is deliberately not installed in v0.5.** PebbleKit JS
-configuration and PebbleKit Android 2 simultaneous routing require hardware
-validation; there is no default SMS access or outbound messaging yet.
-The work to implement the companion belongs behind a tested integration gate.
+- Pebble Android app **1.15 or newer** (experimental plugin permissions).
+- Pebble app **Settings → Debug → Show debug options → Use experimental plugins**.
+- Notification access must already be granted to the Pebble app.
+- When asked for CW Messenger's **Notifications** permission, approve it.
+- Keep CW Messenger **open on the watch**: PebbleKit JS and this subscription
+  stop when the watchapp exits. This is NOT a background SMS listener.
 
-## Build/install on `manjo`
+### Configure the source in the Pebble app
+
+1. Open the Pebble phone app, find **CW Messenger → Settings**.
+2. In **Incoming SMS via Pebble (Preview)**, enable
+   **Read new message notifications as CW**.
+3. In **Allowed SMS app names**, enter the exact Android notification app
+   name (default: **Messages**). More than one app name can be entered as a
+   comma-separated list, e.g. `Messages, Google Messages`.
+4. Save. Open CW Messenger on the watch.
+5. Choose **Receive** as the initial screen in Settings, or press **Back**
+   from Send. Send a new test SMS to your phone.
+
+The first notification-shade snapshot is deliberately ignored, so CW
+Messenger does not unexpectedly read old messages on startup. Subsequent
+new/updated messages from a matching app name are displayed, capped at
+120 ASCII Morse-compatible characters. This uses the notification title/body,
+not the Android SMS database. A message hidden by Android's privacy controls
+may not have readable content. The plugin can see the whole notification
+shade, but CW Messenger only forwards matching app names to the watch.
+
+### Build/install on manjo (no separate APK)
 
 ```bash
 cd ~/pebble-cw-messenger
-git pull --ff-only origin main
-pebble package install @rebble/clay
-pebble build
-pebble install --cloudpebble
+git stash push -m "Save local package edits" -- package.json
+git fetch origin
+git switch -c feature/no-apk-notification-cw --track origin/feature/no-apk-notification-cw
+bash scripts/build-no-apk.sh && pebble install --cloudpebble
 ```
 
-If the SDK reports missing JS dependency, delete **only** stale build artifacts
-using `rm -rf build`, then rerun `pebble package install @rebble/clay` and
-`pebble build`. Do not delete the source repository.
+If you already have the branch locally, use
+`git switch feature/no-apk-notification-cw` and
+`git pull --ff-only origin feature/no-apk-notification-cw` rather than
+creating it again.
 
-Settings should appear next to the installed app in the Pebble phone app.
-After saving, reopen the watchapp and replay the message; the bottom bar should
-reflect your chosen WPM and Hz. In Send mode, hold a paddle to verify its speed
-and use Select as the straight key. Test the reverse-paddle switch separately.
+The script installs Clay, cleans/rebuilds the PBW, and sets PBW
+`manifestVersion=2` with the `Notifications` permission declared in
+`package.json`. It creates `build/pebble-cw-messenger.pbw`. It does
+not build or install anything on Android. The Pebble Android app
+still needs to be paired with the watch to install the PBW.
 
-## Current mode controls
+To inspect the permission metadata:
 
-| Mode | Button | Action |
-| --- | --- | --- |
-| Send | Up / Down | Dit / Dah (reversible in Settings) |
-| Send | Hold Up / Down | Repeated dits/dahs |
-| Send | Select | Straight key on button down/up |
-| Send | Back | Return to Receive |
-| Receive | Select | Replay demo text |
-| Receive | Up / Down | Volume (or sync +/-10 ms in calibration) |
-| Receive | Hold Select | Toggle sync calibration |
-| Receive | Hold Down | Open Send mode |
-| Receive | Back | Mute or stop playback |
+```bash
+python3 - <<'PY'
+import json, zipfile
+with zipfile.ZipFile("build/pebble-cw-messenger.pbw") as z:
+    x = json.loads(z.read("appinfo.json"))
+    print(x.get("manifestVersion"), x.get("usesPermissions"))
+PY
+```
 
-## SMS architecture and approval gate
+Expected: `2 ['Notifications']`.
 
-The eventual Android companion should use **NotificationListenerService**
-with explicit user permission and a narrow allowlist of SMS/messaging apps.
-It will parse permitted sender/body notifications and send them to the Pebble
-watch via **PebbleKit Android 2**. Direct `READ_SMS` is unnecessary for
-incoming notifications. Raw message contents should not be logged.
+### What works in this preview
 
-PebbleKit JS hosts the Clay settings; the Pebble platform's mixed native/JS
-AppMessage routing is version-sensitive. We should validate these separately:
+- Existing Send paddles, straight key and local decoding (unchanged).
+- Existing Receive PCM square tone and precomputed vibration pattern (unchanged).
+- Pebble app settings for speed, pitch, volume, mode, audio, haptics and
+  demo message.
+- **New:** opt-in forwarding of newly observed Android notification
+  titles/bodies from user-approved app labels to the Receive screen.
+- **New:** if a new message arrives while sending, defer Receive playback
+  until the user returns from the CW keyer. Do not disturb an in-progress draft.
 
-1. Phone Settings opens and values persist to the watch.
-2. A companion installed on Android can send a synthetic message to the
-   active watchapp while Clay/PKJS is present.
-3. Notification listener permission works and selected SMS notifications
-   reach the watch without accidental duplication or private-content leakage.
-4. Incoming audio begins only under the user's configured privacy policy.
-5. Sending text from the watch opens a **user-confirmed SMS intent** on the
-   phone; never silently send or request SEND_SMS just for convenience.
+### What this does NOT do
 
-We should not claim the whole SMS system works until those tests have passed
-on the specific Pebble app and Android firmware in use.
+- **No automatic receiving while CW Messenger is closed.** The PebbleKit JS
+  subscription only exists during this watchapp session.
+- **No outbound SMS sending.** The notifications source is read-only.
+- **No access to SMS history or dismissed/hidden messages.**
+- No dedicated Android APK; no server; no internet transfer of SMS content.
+
+This depends on **Pebble mobile app experimental plugins** and needs a real
+Time 2 test. An incompatible or disabled preview API leaves Send, Receive
+and Clay Settings usable, but live notification reading unavailable.
+
+References:
+- https://developer.repebble.com/guides/plugins/preview/
+- https://developer.repebble.com/docs/pebblekit-js/Pebble/
