@@ -436,9 +436,10 @@ static void init(void) {
     .load = window_load,
     .unload = window_unload
   });
-  window_stack_push(s_window, true);
-  // Prototype an incoming message by playing it as soon as it is shown.
-  start_playback();
+  // Put Receive underneath Send, so BACK from the keyer returns to the
+  // proven receive demo. Start directly in Send while developing CW TX.
+  window_stack_push(s_window, false);
+  cw_send_open(MORSE_WPM, TONE_HZ, s_volume);
 }
 
 static void deinit(void) {
