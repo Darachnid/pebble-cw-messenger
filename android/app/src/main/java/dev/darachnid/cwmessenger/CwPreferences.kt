@@ -20,7 +20,6 @@ internal object CwPreferences {
     // user has actually edited something on their phone.
     fun packet(context: Context): PebbleDictionary {
         val p = prefs(context)
-        if (!p.getBoolean("configured", false)) return emptyMap()
         val values = mutableMapOf<UInt, PebbleDictionaryItem>()
         fun number(key: UInt, name: String) {
             if (p.contains(name)) values[key] = PebbleDictionaryItem.Int32(p.getInt(name, 0))
@@ -32,8 +31,16 @@ internal object CwPreferences {
         }
         number(CwTransport.KEY_WPM, "wpm")
         number(CwTransport.KEY_TONE, "tone_hz")
-        number(CwTransport.KEY_VOLUME, "volume")
-        toggle(CwTransport.KEY_RX_AUDIO, "rx_audio")
+        // Mirror the displayed phone volume to avoid a saved watch mute.
+        values[CwTransport.KEY_VOLUME] = PebbleDictionaryItem.Int32(
+            p.getInt("volume", 60).coerceIn(0, 100)
+        )
+        // The UI displays Receive sound ON by default. Always transmit that
+        // displayed value, even when the user has never touched the switch.
+        // Otherwise an older watch setting of OFF silently overrides the phone.
+        values[CwTransport.KEY_RX_AUDIO] = PebbleDictionaryItem.Int32(
+            if (p.getBoolean("rx_audio", true)) 1 else 0
+        )
         toggle(CwTransport.KEY_RX_VIBE, "rx_vibe")
         toggle(CwTransport.KEY_TX_AUDIO, "tx_audio")
         toggle(CwTransport.KEY_TX_VIBE, "tx_vibe")
