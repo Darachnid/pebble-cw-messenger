@@ -2,3 +2,10 @@ build/
 node_modules/
 *.pbw
 .DS_Store
+
+# Local build files
+.lock-waf_linux_build
+android/.gradle/
+android/local.properties
+android/**/build/
+package-lock.json
