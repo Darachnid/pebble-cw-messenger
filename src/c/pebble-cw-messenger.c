@@ -151,7 +151,8 @@ static void update_footer(void) {
   if (s_calibrating) {
     snprintf(s_footer, sizeof(s_footer), "SYNC %+d ms", s_sync_ms);
   } else {
-    snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz", MORSE_WPM, TONE_HZ);
+    snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz",
+             (unsigned)MORSE_WPM, (unsigned)TONE_HZ);
   }
   if (s_footer_layer) text_layer_set_text(s_footer_layer, s_footer);
 }
