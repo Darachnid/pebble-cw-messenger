@@ -1,21 +1,19 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "0.6.0-beta.1",
+  "version": "0.6.0",
   "keywords": [
     "pebble-app",
     "morse-code",
     "cw"
   ],
   "private": true,
-  "dependencies": {
-    "@rebble/clay": "^1.0.0"
-  },
+  "dependencies": {},
   "pebble": {
     "displayName": "CW Messenger",
     "uuid": "24ae7051-9f15-42a3-805e-e4b4a22bc64d",
     "sdkVersion": "3",
-    "enableMultiJS": true,
+    "enableMultiJS": false,
     "targetPlatforms": [
       "emery"
     ],
@@ -44,9 +42,7 @@
     "resources": {
       "media": []
     },
-    "capabilities": [
-      "configurable"
-    ],
+    "capabilities": [],
     "companionApp": {
       "android": {
         "url": "https://github.com/Darachnid/pebble-cw-messenger/tree/feature/android-sms-bridge/android",
