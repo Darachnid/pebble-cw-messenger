@@ -116,16 +116,65 @@ On some Android phones you must allow the helper unrestricted background
 operation in Battery settings, so Android does not suspend its notification
 listener. Do not grant unrelated permissions.
 
-## Optional watch-to-phone CW drafts
+## Triple-Back Morse reply and local spelling review
 
-In Send, enter CW with Up/Down/Select. Double-press Back within 400ms, then
-Select on the draft review screen to hand a decoded draft to Android. Android
-creates a **local notification** you can tap to open the normal SMS composer.
-Select a recipient and explicitly send there. No SMS is sent silently, and
-this helper never requests `SEND_SMS`.
+**Requires rebuilding BOTH** the watch PBW and the Pixel Android APK after
+updating to this branch; older installed components do not know the new keys.
 
-On Android 13+, grant the helper's **outgoing draft notification** permission
-if you want that handoff.
+1. Receive a real SMS from the sender you want to reply to. The phone's
+   default SMS app must post a notification with an Android **Reply** action.
+   The bridge stores only the most recently notified conversation's Reply
+   action in memory; it does not infer recipient phone numbers from a name.
+2. On the watch, hold **Down** in Receive to open **Send**. Key your reply
+   with the Up/Down paddles or Select straight key as usual.
+3. **Triple-press Back** (three taps within 400 ms) to prepare the decoded
+   Morse text. The watch shows **SPELLCHECK** while the phone processes it.
+4. If a local model is configured, the phone makes one Ollama-compatible
+   `POST /api/generate` request asking for conservative spelling correction.
+   Configure **CW SMS Bridge → Local Ollama URL** and **Ollama model** on
+   Android. For a model hosted on `matthew`, use its reachable LAN or
+   Tailscale address and the Ollama port, e.g. `http://100.x.y.z:11434`;
+   this is an example address, not a known accessible endpoint. The user
+   must operate the Ollama server; the helper does not install or run a
+   model on the Pixel itself. **No URL/model = no model call**. If the
+   model times out, the original text is returned for review.
+5. The watch shows **REVIEW REPLY** with the proposed exact text. Press
+   **Select** to confirm that text, or **Back** to cancel. There is no
+   automatic send or implicit approval of edits.
+6. Android uses the *original notification's* available RemoteInput
+   `Reply` action to submit that message. It reports **SMS REPLY SENT**
+   if the Android action accepts the request, or a failure status if no
+   action is available. The transport reports handoff to the Android app,
+   not carrier delivery confirmation. The reply target is never guessed.
+   Google Messages' original notification must still have a valid Reply
+   action. No `SEND_SMS` permission is required.
+
+**Caution:** The optional Ollama server must be one you control and trust.
+The HTTP option sends draft text over your own configured network endpoint.
+Use HTTPS or an encrypted network such as Tailscale. A host reachable only
+from the desktop but not the Pixel will not work. The phone shows the
+uncorrected draft instead of inventing a correction when the model is
+unavailable. Review the suggestion before choosing Select. This flow has
+not yet been tested on real Pebble hardware after these changes.
+
+### Audio diagnostic
+
+If an incoming message vibrates but is silent:
+
+1. Open **CW SMS Bridge on the Pixel**, toggle **Receive sound** OFF and
+   ON to explicitly send the preference on the next SMS/test. Set the phone
+   **Speaker volume** slider to at least 60. Saved Clay settings on the
+   watch otherwise remain as they were previously.
+2. Install this branch's PBW and repeat **Test background launch and
+   Morse** from the phone.
+3. Read the footer on the watch. **RX AUDIO DISABLED** indicates the
+   stored receive-audio toggle is off; **VOLUME = 0** means the stored
+   volume is muted; **SPEAKER OPEN FAILED** means the PCM stream could
+   not be opened. If it still sounds silent with the normal `WPM | Hz`
+   footer, the device/PCM path needs hardware debugging.
+4. Receive and send PCM generation were otherwise intentionally left
+   unchanged from the earlier working timing implementation.
+
 
 ## Privacy, reliability, and limitations
 
