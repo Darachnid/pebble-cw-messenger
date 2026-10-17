@@ -4,10 +4,12 @@
 #include <string.h>
 #include <stdio.h>
 #include "send.h"
+#include <message_keys.auto.h>
 
 #define TX_TEXT_CAP 160
 #define TX_CODE_CAP 12
 #define TX_VIBE_MAX 10000u
+#define TX_BACK_DOUBLE_MS 400
 
 typedef struct {
   char letter;
@@ -32,6 +34,9 @@ static const CwPair s_alphabet[] = {
 };
 
 static Window *s_window;
+static Window *s_confirm_window;
+static TextLayer *s_confirm_text;
+static char s_confirm_label[256];
 static TextLayer *s_title_layer;
 static TextLayer *s_message_layer;
 static TextLayer *s_code_layer;
@@ -292,6 +297,82 @@ static void straight_up(ClickRecognizerRef recognizer, void *context) {
   begin_paddle();
 }
 
+// Double BACK opens a confirmation, never sends anything automatically.
+// AppMessage may be routed to PKJS instead of the native companion on some
+// Pebble Android versions; the watch must not claim an SMS was delivered.
+static void confirm_redraw(const char *heading) {
+  snprintf(s_confirm_label, sizeof(s_confirm_label),
+           "%s\n\n%.130s\n\nSELECT: TO PHONE\nBACK: CANCEL",
+           heading, s_text);
+  if (s_confirm_text) text_layer_set_text(s_confirm_text, s_confirm_label);
+}
+
+static void confirm_send_click(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer; (void)context;
+  if (!s_text_length) return;
+  DictionaryIterator *iter = NULL;
+  AppMessageResult result = app_message_outbox_begin(&iter);
+  if (result == APP_MSG_OK && iter) {
+    dict_write_cstring(iter, MESSAGE_KEY_TxDraft, s_text);
+    result = app_message_outbox_send();
+  }
+  if (result == APP_MSG_OK) confirm_redraw("HANDOFF REQUESTED");
+  else confirm_redraw("PHONE LINK FAILED");
+}
+
+static void confirm_cancel_click(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer; (void)context;
+  window_stack_pop(true);
+}
+
+static void confirm_clicks(void *context) {
+  (void)context;
+  window_single_click_subscribe(BUTTON_ID_SELECT, confirm_send_click);
+  window_single_click_subscribe(BUTTON_ID_BACK, confirm_cancel_click);
+}
+
+static void confirm_load(Window *window) {
+  GRect bounds = layer_get_bounds(window_get_root_layer(window));
+  s_confirm_text = text_layer_create(GRect(8, 12,
+      bounds.size.w - 16, bounds.size.h - 24));
+  text_layer_set_font(s_confirm_text, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_text_alignment(s_confirm_text, GTextAlignmentLeft);
+  text_layer_set_overflow_mode(s_confirm_text, GTextOverflowModeWordWrap);
+  layer_add_child(window_get_root_layer(window),
+                  text_layer_get_layer(s_confirm_text));
+  confirm_redraw("SEND SMS DRAFT?");
+}
+
+static void confirm_unload(Window *window) {
+  (void)window;
+  text_layer_destroy(s_confirm_text);
+  s_confirm_text = NULL;
+}
+
+static void back_double_click(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer; (void)context;
+  if (!s_text_length) return;
+  // Finish any partial character before opening the confirmation.
+  cancel_timer(&s_mark_timer);
+  cancel_timer(&s_gap_timer);
+  cancel_timer(&s_letter_timer);
+  cancel_timer(&s_word_timer);
+  key_up();
+  s_paddle_mark = false;
+  s_up_held = s_down_held = s_straight_held = false;
+  s_up_pending = s_down_pending = false;
+  finish_letter();
+  if (!s_confirm_window) {
+    s_confirm_window = window_create();
+    window_set_click_config_provider(s_confirm_window, confirm_clicks);
+    window_set_window_handlers(s_confirm_window, (WindowHandlers) {
+      .load = confirm_load,
+      .unload = confirm_unload
+    });
+  }
+  window_stack_push(s_confirm_window, true);
+}
+
 static void back_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   window_stack_pop(true);
@@ -303,6 +384,8 @@ static void configure_clicks(void *context) {
   window_raw_click_subscribe(BUTTON_ID_DOWN, down_down, down_up, NULL);
   window_raw_click_subscribe(BUTTON_ID_SELECT, straight_down, straight_up, NULL);
   window_single_click_subscribe(BUTTON_ID_BACK, back_click);
+  window_multi_click_subscribe(BUTTON_ID_BACK, 2, 2, TX_BACK_DOUBLE_MS,
+                               true, back_double_click);
 }
 
 static void stop_session(void) {
@@ -409,6 +492,10 @@ void cw_send_open(const CwSettings *settings) {
 
 void cw_send_deinit(void) {
   stop_session();
+  if (s_confirm_window) {
+    window_destroy(s_confirm_window);
+    s_confirm_window = NULL;
+  }
   if (s_window) {
     window_destroy(s_window);
     s_window = NULL;
