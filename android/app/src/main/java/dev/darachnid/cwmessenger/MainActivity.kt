@@ -1,6 +1,10 @@
 package dev.darachnid.cwmessenger
 
+import android.Manifest
 import android.app.Activity
+import android.os.Build
+import android.content.pm.PackageManager
+import android.widget.Toast
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -23,7 +27,6 @@ import java.util.UUID
  */
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var sender: DefaultPebbleSender? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,31 +59,55 @@ class MainActivity : Activity() {
             }
         })
         root.addView(Button(this).apply {
+            text = "Allow draft handoff notifications"
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 44)
+                } else {
+                    Toast.makeText(this@MainActivity,
+                        "Draft notifications already allowed on this Android version.",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        })
+        root.addView(Button(this).apply {
             text = "Send a harmless test message to Pebble"
             setOnClickListener {
                 scope.launch {
                     val connection = DefaultPebbleSender(this@MainActivity)
                     try {
                         connection.startAppOnTheWatch(CwTransport.APP_UUID)
-                        kotlinx.coroutines.delay(600)
-                        connection.sendDataToPebble(CwTransport.APP_UUID, mapOf(
-                            CwTransport.KEY_SENDER to PebbleDictionaryItem.Text("CW Test"),
-                            CwTransport.KEY_BODY to PebbleDictionaryItem.Text("test message")
-                        ))
+                        kotlinx.coroutines.delay(1000)
+                        val result = connection.sendDataToPebble(
+                            CwTransport.APP_UUID, mapOf(
+                                CwTransport.KEY_SENDER to PebbleDictionaryItem.Text("CW Test"),
+                                CwTransport.KEY_BODY to PebbleDictionaryItem.Text("test message")
+                            )
+                        )
+                        Toast.makeText(this@MainActivity,
+                            "Pebble test transfer: " + result::class.java.simpleName,
+                            Toast.LENGTH_LONG).show()
+                    } catch (ex: Exception) {
+                        Toast.makeText(this@MainActivity,
+                            "Pebble connection failed. Check pairing and companion support.",
+                            Toast.LENGTH_LONG).show()
                     } finally {
                         connection.close()
                     }
                 }
             }
         })
-        text("This build has NO watch-to-phone SMS sending. " +
-             "The native/Clay coexistence path must be tested before enabling replies.")
+        text("To send from the watch: double-press Back in SEND CW, then press " +
+             "Select to hand the CW draft to this phone. Tap the phone notification, " +
+             "choose a recipient and press Send in the messaging app. " +
+             "Sending never happens automatically.")
         setContentView(root)
     }
 
     override fun onDestroy() {
         scope.cancel()
-        sender?.close()
         super.onDestroy()
     }
 }
