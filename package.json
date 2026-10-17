@@ -37,7 +37,10 @@
       "DemoMessage",
       "SmsSender",
       "SmsBody",
-      "TxDraft"
+      "TxDraft",
+      "DraftReview",
+      "DraftConfirm",
+      "DraftStatus"
     ],
     "resources": {
       "media": []
