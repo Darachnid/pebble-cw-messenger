@@ -2,6 +2,18 @@
 
 Read incoming messages as Morse code via watch speaker and haptics. Current revision is a **self-contained simulated message**; it does not yet capture phone notifications.
 
+## v0.4 – Send mode opens by default
+
+**When you launch the watchapp it now opens straight into SEND CW**, not the Receive demo. No hidden long press required.
+
+- Top bar: SEND CW
+- Body: decoded local CW draft and straight-key/paddle instructions
+- Bottom: WPM and Hz
+- UP = dit, DOWN = dah, SELECT = straight key, BACK = return to Receive
+- The previous receive test stays one Back press away; tap Select there to replay it
+
+Hold Down in Receive to return to Send. You must install the new PBW after git pull and pebble build to see this change.
+
 ## v0.3 – synchronized Morse playback
 
 - Sender top strip: **Ben**
