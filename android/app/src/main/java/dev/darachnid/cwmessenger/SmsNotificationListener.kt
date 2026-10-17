@@ -57,7 +57,13 @@ class SmsNotificationListener : NotificationListenerService() {
         // Watch AppMessage buffers and C strings are small. Normalize Morse
         // support explicitly; do not cut a UTF-8 code point in the middle.
         val title = cwFriendly(senderText, 31)
-        val body = cwFriendly(bodyText, 120)
+        // Explicit ellipsis if longer than watch-sized 120-character payload;
+        // this initial beta does not silently suggest it read the full SMS.
+        val body = if (bodyText.length > 120) {
+            cwFriendly(bodyText, 117) + "..."
+        } else {
+            cwFriendly(bodyText, 120)
+        }
         if (title.isBlank() || body.isBlank()) return
 
         val key = sbn.key
