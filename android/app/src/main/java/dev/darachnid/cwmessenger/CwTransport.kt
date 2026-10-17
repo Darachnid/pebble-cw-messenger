@@ -9,5 +9,5 @@ internal object CwTransport {
     // Verify these IDs against build/include/message_keys.auto.h after pebble build.
     const val KEY_SENDER: UInt = 10014u
     const val KEY_BODY: UInt = 10015u
-    const val KEY_DRAFT: UInt = 16u
+    const val KEY_DRAFT: UInt = 10016u
 }
