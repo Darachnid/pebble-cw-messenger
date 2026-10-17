@@ -1,13 +1,15 @@
 #include <pebble.h>
 #include "send.h"
+#include "config.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 
-#define MESSAGE_SENDER "Ben"
-#define MESSAGE_TEXT "good night bens best"
-#define MORSE_WPM 20
-#define TONE_HZ 600
+// Values come from the saved Pebble phone-app settings.
+#define MESSAGE_SENDER (s_cfg.sender)
+#define MESSAGE_TEXT (s_cfg.demo_text)
+#define MORSE_WPM (s_cfg.wpm)
+#define TONE_HZ (s_cfg.tone_hz)
 #define SAMPLE_RATE 16000u
 #define MAX_SEGMENTS 512
 #define PCM_CHUNK 512
@@ -26,6 +28,7 @@ typedef struct {
   uint16_t duration_ms;
 } MorseSegment;
 
+static CwSettings s_cfg;
 static Window *s_window;
 static TextLayer *s_sender_layer;
 static TextLayer *s_message_layer;
@@ -270,8 +273,8 @@ static void start_playback(void) {
   }
   // Encoding always starts with a mark, and OFF/ON alternates; the Pebble
   // VibePattern format expects its first duration to be ON.
-  s_audio_enabled = true;
-  s_haptics_enabled = true;
+  s_audio_enabled = (s_cfg.receive_audio != 0);
+  s_haptics_enabled = (s_cfg.receive_vibe != 0);
   s_playing = true;
   s_pcm_segment = 0;
   s_pcm_samples_remaining = 0;
@@ -282,7 +285,8 @@ static void start_playback(void) {
   s_leading_silence_samples = s_sync_ms < 0 ?
     (uint32_t)(-s_sync_ms) * (SAMPLE_RATE / 1000u) : 0;
 
-  s_stream_open = speaker_stream_open(SpeakerPcmFormat_16kHz_8bit, s_volume);
+  s_stream_open = s_audio_enabled &&
+    speaker_stream_open(SpeakerPcmFormat_16kHz_8bit, s_volume);
   // Feed PCM before scheduling the vibes to minimize initial stream
   // starvation. The residual device-level latency is user-calibratable.
   if (s_stream_open) pcm_pump(NULL);
@@ -307,11 +311,14 @@ static void volume_up(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   if (s_calibrating) {
     if (s_sync_ms < MAX_SYNC_MS) s_sync_ms += 10;
-    persist_write_int(SYNC_PREF_KEY, s_sync_ms);
+    s_cfg.sync_ms = s_sync_ms;
+    cw_settings_save(&s_cfg);
     update_footer();
     return;
   }
   s_volume = s_volume >= 90 ? 100 : s_volume + 10;
+  s_cfg.volume = s_volume;
+  cw_settings_save(&s_cfg);
   speaker_set_volume(s_volume);
 }
 
@@ -319,11 +326,14 @@ static void volume_down(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   if (s_calibrating) {
     if (s_sync_ms > MIN_SYNC_MS) s_sync_ms -= 10;
-    persist_write_int(SYNC_PREF_KEY, s_sync_ms);
+    s_cfg.sync_ms = s_sync_ms;
+    cw_settings_save(&s_cfg);
     update_footer();
     return;
   }
   s_volume = s_volume <= 10 ? 0 : s_volume - 10;
+  s_cfg.volume = s_volume;
+  cw_settings_save(&s_cfg);
   speaker_set_volume(s_volume);
 }
 
@@ -365,7 +375,7 @@ static void enter_send(ClickRecognizerRef recognizer, void *context) {
   stop_playback();
   s_calibrating = false;
   update_footer();
-  cw_send_open(MORSE_WPM, TONE_HZ, s_volume);
+  cw_send_open(&s_cfg);
 }
 
 static void clicks(void *context) {
@@ -425,21 +435,35 @@ static void window_unload(Window *window) {
   s_sender_layer = NULL;
 }
 
+static void inbox_received(DictionaryIterator *iter, void *context) {
+  (void)context;
+  if (!cw_settings_from_appmessage(&s_cfg, iter)) return;
+  s_volume = (uint8_t)s_cfg.volume;
+  s_sync_ms = (int16_t)s_cfg.sync_ms;
+  if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
+  if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
+  speaker_set_volume(s_volume);
+  update_footer();
+  // Active streaming and a running transmit keyer are NOT interrupted.
+  // Fresh values are used on the next replay/opening of Send.
+}
+
 static void init(void) {
-  if (persist_exists(SYNC_PREF_KEY)) {
-    int stored = persist_read_int(SYNC_PREF_KEY);
-    if (stored >= MIN_SYNC_MS && stored <= MAX_SYNC_MS) s_sync_ms = stored;
-  }
+  cw_settings_load(&s_cfg);
+  s_volume = (uint8_t)s_cfg.volume;
+  s_sync_ms = (int16_t)s_cfg.sync_ms;
+  app_message_register_inbox_received(inbox_received);
+  app_message_open(512, 128);
   s_window = window_create();
   window_set_click_config_provider(s_window, clicks);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = window_load,
     .unload = window_unload
   });
-  // Put Receive underneath Send, so BACK from the keyer returns to the
-  // proven receive demo. Start directly in Send while developing CW TX.
+  // Start in the user-configured mode, preserving the tested RX and TX paths.
   window_stack_push(s_window, false);
-  cw_send_open(MORSE_WPM, TONE_HZ, s_volume);
+  if (s_cfg.start_mode == 0) cw_send_open(&s_cfg);
+  else if (s_cfg.autoplay) start_playback();
 }
 
 static void deinit(void) {
