@@ -56,6 +56,7 @@ static bool s_calibrating;
 static uint8_t s_volume = 60;
 static bool s_playing;
 static bool s_audio_enabled = true;
+static bool s_audio_diagnostic;
 static bool s_haptics_enabled = true;
 static bool s_stream_open;
 static char s_footer[48];
@@ -162,6 +163,9 @@ static void update_footer(void) {
   } else {
     snprintf(s_footer, sizeof(s_footer), "%u WPM  |  %u Hz",
              (unsigned)MORSE_WPM, (unsigned)TONE_HZ);
+  }
+  if (s_audio_diagnostic && !s_calibrating) {
+    snprintf(s_footer, sizeof(s_footer), "SPEAKER UNAVAILABLE");
   }
   if (s_footer_layer) text_layer_set_text(s_footer_layer, s_footer);
 }
@@ -308,6 +312,7 @@ static void start_playback(void) {
   // Encoding always starts with a mark, and OFF/ON alternates; the Pebble
   // VibePattern format expects its first duration to be ON.
   s_audio_enabled = (s_cfg.receive_audio != 0);
+  s_audio_diagnostic = false;
   s_haptics_enabled = (s_cfg.receive_vibe != 0);
   s_playing = true;
   s_pcm_segment = 0;
@@ -324,7 +329,11 @@ static void start_playback(void) {
   // Feed PCM before scheduling the vibes to minimize initial stream
   // starvation. The residual device-level latency is user-calibratable.
   if (s_stream_open) pcm_pump(NULL);
-  else s_audio_enabled = false;
+  else {
+    if (s_audio_enabled) s_audio_diagnostic = true;
+    s_audio_enabled = false;
+  }
+  update_footer();
 
   if (s_sync_ms > 0 && s_audio_enabled) {
     s_haptic_start_timer = app_timer_register(
@@ -504,6 +513,17 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     update_footer();
   }
 
+  // Reply-review packets arrive while Send's confirmation window is active.
+  Tuple *review = dict_find(iter, MESSAGE_KEY_DraftReview);
+  if (review && review->type == TUPLE_CSTRING && review->length > 1) {
+    cw_send_receive_review(review->value->cstring);
+    return;
+  }
+  Tuple *status = dict_find(iter, MESSAGE_KEY_DraftStatus);
+  if (status && status->type == TUPLE_CSTRING && status->length > 1) {
+    cw_send_receive_status(status->value->cstring);
+    return;
+  }
   Tuple *sender = dict_find(iter, MESSAGE_KEY_SmsSender);
   Tuple *body = dict_find(iter, MESSAGE_KEY_SmsBody);
   if (body && body->type == TUPLE_CSTRING && body->length > 1) {
