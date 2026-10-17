@@ -255,7 +255,10 @@ static void window_load(Window *window) {
 
 static void window_unload(Window *window) {
   (void)window;
-  s_text = NULL;
+  if (s_text) {
+    text_layer_destroy(s_text);
+    s_text = NULL;
+  }
 }
 
 static void init(void) {
@@ -270,10 +273,6 @@ static void init(void) {
 
 static void deinit(void) {
   stop_playback("STOPPED");
-  if (s_text) {
-    text_layer_destroy(s_text);
-    s_text = NULL;
-  }
   window_destroy(s_window);
 }
 
