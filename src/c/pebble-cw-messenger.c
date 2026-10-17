@@ -36,6 +36,8 @@ static char s_rx_sender[sizeof(s_cfg.sender)];
 static char s_rx_text[sizeof(s_cfg.demo_text)];
 static bool s_live_message;
 static bool s_pending_sms_playback;
+static bool s_auto_dismiss;
+static AppTimer *s_dismiss_timer;
 static Window *s_window;
 static TextLayer *s_sender_layer;
 static TextLayer *s_message_layer;
@@ -258,6 +260,23 @@ static void start_haptics(void *context) {
   vibes_enqueue_custom_pattern(pattern);
 }
 
+static void dismiss_received_message(void *context) {
+  (void)context;
+  s_dismiss_timer = NULL;
+  if (s_auto_dismiss && window_stack_get_top_window() == s_window && !s_playing) {
+    // Return to the watchface or prior screen after the new message finishes.
+    window_stack_pop_all(true);
+  }
+}
+
+static void keep_open(void) {
+  s_auto_dismiss = false;
+  if (s_dismiss_timer) {
+    app_timer_cancel(s_dismiss_timer);
+    s_dismiss_timer = NULL;
+  }
+}
+
 static void check_finished(void *context) {
   (void)context;
   s_finish_timer = NULL;
@@ -269,9 +288,16 @@ static void check_finished(void *context) {
     return;
   }
   s_playing = false;
+  if (s_auto_dismiss && window_stack_get_top_window() == s_window) {
+    s_dismiss_timer = app_timer_register(6000, dismiss_received_message, NULL);
+  }
 }
 
 static void start_playback(void) {
+  if (s_dismiss_timer) {
+    app_timer_cancel(s_dismiss_timer);
+    s_dismiss_timer = NULL;
+  }
   stop_playback();
   if (!encode_message(MESSAGE_TEXT)) return;
   s_message_duration_ms = 0;
@@ -317,6 +343,7 @@ static void start_playback(void) {
 
 static void volume_up(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  keep_open();
   if (s_calibrating) {
     if (s_sync_ms < MAX_SYNC_MS) s_sync_ms += 10;
     s_cfg.sync_ms = s_sync_ms;
@@ -332,6 +359,7 @@ static void volume_up(ClickRecognizerRef recognizer, void *context) {
 
 static void volume_down(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  keep_open();
   if (s_calibrating) {
     if (s_sync_ms > MIN_SYNC_MS) s_sync_ms -= 10;
     s_cfg.sync_ms = s_sync_ms;
@@ -347,17 +375,28 @@ static void volume_down(ClickRecognizerRef recognizer, void *context) {
 
 static void select_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  keep_open(); // User replaying manually should not be auto-dismissed.
+  if (!s_live_message) {
+    strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender)-1);
+    s_rx_sender[sizeof(s_rx_sender)-1] = '\0';
+    strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text)-1);
+    s_rx_text[sizeof(s_rx_text)-1] = '\0';
+    if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
+    if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
+  }
   start_playback();
 }
 
 static void select_long(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  keep_open();
   s_calibrating = !s_calibrating;
   update_footer();
 }
 
 static void back_single(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  keep_open();
   if (!s_playing) {
     window_stack_pop(true);
     return;
@@ -373,12 +412,14 @@ static void back_single(ClickRecognizerRef recognizer, void *context) {
 
 static void back_double(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
+  keep_open();
   if (s_playing) stop_playback();
 }
 
 static void enter_send(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer;
   (void)context;
+  keep_open();
   // The receive stream is stopped before giving the TX stream the speaker.
   stop_playback();
   s_calibrating = false;
@@ -437,7 +478,7 @@ static void window_appear(Window *window) {
   (void)window;
   if (s_pending_sms_playback) {
     s_pending_sms_playback = false;
-    if (s_cfg.autoplay) start_playback();
+    start_playback();
   }
 }
 
@@ -453,12 +494,20 @@ static void window_unload(Window *window) {
 
 static void inbox_received(DictionaryIterator *iter, void *context) {
   (void)context;
-  // Inbound phone notifications share the AppMessage inbox with Clay.
-  // Do not confuse a live incoming SMS with a demo/config update.
+  // The native Android service can attach saved settings to the same packet as
+  // the incoming SMS, so apply them BEFORE computing Morse playback timing.
+  bool changed = cw_settings_from_appmessage(&s_cfg, iter);
+  if (changed) {
+    s_volume = (uint8_t)s_cfg.volume;
+    s_sync_ms = (int16_t)s_cfg.sync_ms;
+    speaker_set_volume(s_volume);
+    update_footer();
+  }
+
   Tuple *sender = dict_find(iter, MESSAGE_KEY_SmsSender);
   Tuple *body = dict_find(iter, MESSAGE_KEY_SmsBody);
-  if (body && body->type == TUPLE_CSTRING && body->length > 0) {
-    if (sender && sender->type == TUPLE_CSTRING && sender->length > 0) {
+  if (body && body->type == TUPLE_CSTRING && body->length > 1) {
+    if (sender && sender->type == TUPLE_CSTRING && sender->length > 1) {
       strncpy(s_rx_sender, sender->value->cstring, sizeof(s_rx_sender) - 1);
       s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
     } else {
@@ -467,43 +516,39 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     strncpy(s_rx_text, body->value->cstring, sizeof(s_rx_text) - 1);
     s_rx_text[sizeof(s_rx_text) - 1] = '\0';
     s_live_message = true;
+    s_auto_dismiss = true;
+    if (s_dismiss_timer) {
+      app_timer_cancel(s_dismiss_timer);
+      s_dismiss_timer = NULL;
+    }
     if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
     if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
-    // Incoming SMS becomes the active receive message. Never trample a
-    // partly typed reply or interrupt an active straight key / paddle.
-    s_pending_sms_playback = s_cfg.autoplay;
+
+    // If someone is entering a CW draft, leave their keyer and text untouched.
+    // When it is empty, switching back to Receive is safe.
+    s_pending_sms_playback = true;
     if (window_stack_get_top_window() == s_window) {
       s_pending_sms_playback = false;
-      if (s_cfg.autoplay) start_playback();
+      start_playback();
     } else if (cw_send_can_auto_switch()) {
-      window_stack_pop(true); // Receive .appear plays the new text.
+      window_stack_pop(true);
     }
     return;
   }
-  if (!cw_settings_from_appmessage(&s_cfg, iter)) return;
-  // Refresh demo display only until a live SMS has been shown.
-  if (!s_live_message) {
-    strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender) - 1);
-    s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
-    strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text) - 1);
-    s_rx_text[sizeof(s_rx_text) - 1] = '\0';
+
+  if (changed && !s_live_message) {
+    // Keep a neutral ready state; the demo is only played on explicit Select.
+    if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
+    if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
   }
-  s_volume = (uint8_t)s_cfg.volume;
-  s_sync_ms = (int16_t)s_cfg.sync_ms;
-  if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
-  if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
-  speaker_set_volume(s_volume);
-  update_footer();
-  // Active streaming and a running transmit keyer are NOT interrupted.
-  // Fresh values are used on the next replay/opening of Send.
 }
 
 static void init(void) {
   cw_settings_load(&s_cfg);
-  strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender) - 1);
-  s_rx_sender[sizeof(s_rx_sender) - 1] = '\0';
-  strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text) - 1);
-  s_rx_text[sizeof(s_rx_text) - 1] = '\0';
+  // The Android service launches us before transferring the actual message.
+  // Do not play a dummy message or automatically open the keyer on launch.
+  strcpy(s_rx_sender, "CW Messenger");
+  strcpy(s_rx_text, "Incoming message...");
   s_volume = (uint8_t)s_cfg.volume;
   s_sync_ms = (int16_t)s_cfg.sync_ms;
   app_message_register_inbox_received(inbox_received);
@@ -516,13 +561,13 @@ static void init(void) {
     .appear = window_appear,
     .unload = window_unload
   });
-  // Start in the user-configured mode, preserving the tested RX and TX paths.
+  // Always enter Receive when launched by Android. The user can enter
+  // Send manually by holding Down (700 ms) from this screen.
   window_stack_push(s_window, false);
-  if (s_cfg.start_mode == 0) cw_send_open(&s_cfg);
-  else if (s_cfg.autoplay) start_playback();
 }
 
 static void deinit(void) {
+  keep_open();
   stop_playback();
   cw_send_deinit();
   window_destroy(s_window);
