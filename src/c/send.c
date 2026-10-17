@@ -45,6 +45,10 @@ static uint16_t s_wpm = 20;
 static uint16_t s_frequency = 600;
 static uint16_t s_unit_ms = 60;
 static uint8_t s_volume = 60;
+static bool s_audio_enabled = true;
+static bool s_vibration_enabled = true;
+static bool s_reverse_paddles;
+static uint16_t s_straight_threshold_pct = 200;
 static bool s_active;
 static bool s_up_held;
 static bool s_down_held;
@@ -172,17 +176,19 @@ static void key_down(uint32_t duration_ms) {
   speaker_stop();
   const uint32_t tone_ms = duration_ms > TX_VIBE_MAX ? TX_VIBE_MAX : duration_ms;
   // Initiate the speaker request before vibration to minimize perceived lag.
-  if (!speaker_play_tone(s_frequency, tone_ms, s_volume,
-                         SpeakerWaveformSquare)) {
+  if (s_audio_enabled && !speaker_play_tone(s_frequency, tone_ms, s_volume,
+                                              SpeakerWaveformSquare)) {
     APP_LOG(APP_LOG_LEVEL_WARNING, "TX tone failed: %u Hz, %lu ms",
             (unsigned)s_frequency, (unsigned long)tone_ms);
   }
-  s_vibration_duration = tone_ms;
-  VibePattern vibe = {
-    .durations = &s_vibration_duration,
-    .num_segments = 1
-  };
-  vibes_enqueue_custom_pattern(vibe);
+  if (s_vibration_enabled) {
+    s_vibration_duration = tone_ms;
+    VibePattern vibe = {
+      .durations = &s_vibration_duration,
+      .num_segments = 1
+    };
+    vibes_enqueue_custom_pattern(vibe);
+  }
 }
 
 static void key_up(void) {
@@ -224,10 +230,12 @@ static void begin_paddle(void) {
   else s_down_pending = false;
 
   s_last_paddle = choose_up ? 1 : -1;
-  s_mark_symbol = choose_up ? '.' : '-';
+  // Logical dit/dah assignment can be inverted in Pebble app settings.
+  const bool dit = choose_up != s_reverse_paddles;
+  s_mark_symbol = dit ? '.' : '-';
   s_paddle_mark = true;
   prepare_mark();
-  const uint32_t duration = choose_up ? s_unit_ms : 3u * s_unit_ms;
+  const uint32_t duration = dit ? s_unit_ms : 3u * s_unit_ms;
   key_down(duration);
   s_mark_timer = app_timer_register(duration, mark_done, NULL);
   if (!s_mark_timer) {
@@ -279,7 +287,8 @@ static void straight_up(ClickRecognizerRef recognizer, void *context) {
   s_straight_held = false;
   key_up();
   // Decode arbitrary press duration relative to configured Morse unit.
-  record_symbol(held_ms >= 2u * s_unit_ms ? '-' : '.');
+  record_symbol(held_ms * 100u >=
+                (uint32_t)s_straight_threshold_pct * s_unit_ms ? '-' : '.');
   begin_paddle();
 }
 
@@ -366,7 +375,7 @@ static void window_unload(Window *window) {
   s_footer_layer = NULL;
 }
 
-void cw_send_open(uint16_t wpm, uint16_t tone_hz, uint8_t volume) {
+void cw_send_open(const CwSettings *settings) {
   if (!s_window) {
     s_window = window_create();
     if (!s_window) return;
@@ -376,11 +385,15 @@ void cw_send_open(uint16_t wpm, uint16_t tone_hz, uint8_t volume) {
       .unload = window_unload
     });
   }
-  s_wpm = wpm ? wpm : 20;
-  s_frequency = tone_hz ? tone_hz : 600;
-  s_unit_ms = 1200u / s_wpm;
+  s_wpm = (uint16_t)settings->wpm;
+  s_frequency = (uint16_t)settings->tone_hz;
+  s_unit_ms = (uint16_t)(1200u / s_wpm);
   if (!s_unit_ms) s_unit_ms = 1;
-  s_volume = volume;
+  s_volume = (uint8_t)settings->volume;
+  s_audio_enabled = (settings->send_audio != 0);
+  s_vibration_enabled = (settings->send_vibe != 0);
+  s_reverse_paddles = (settings->reverse_paddles != 0);
+  s_straight_threshold_pct = (uint16_t)settings->straight_threshold_pct;
   s_up_held = s_down_held = s_straight_held = false;
   s_up_pending = s_down_pending = false;
   s_last_paddle = 0;
