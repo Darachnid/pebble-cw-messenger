@@ -139,7 +139,12 @@ class MainActivity : Activity() {
         toggle("Reverse Up/Down dits and dahs", "reverse", false)
         slider("Straight-key dah threshold (% of dit)", "threshold", 125, 300, 25, 200)
 
-        text("Optional manual Receive demo", 20f)
+        text("Optional private local language model", 20f)
+        text("Use an Ollama server on your own device, local network or Tailnet. The original draft is used when the model is not configured or unavailable. This feature never contacts a public AI service.")
+        input("Local Ollama URL (e.g. http://100.x.x.x:11434)", "llm_url", "", 180)
+        input("Ollama model (e.g. llama3.2:3b)", "llm_model", "", 80)
+        text("Only explicitly configured servers receive CW draft text. Review every proposed correction on your watch before sending.")
+                text("Optional manual Receive demo", 20f)
         input("Sample sender", "demo_sender", "Ben", 31)
         input("Sample message", "demo_message", "good night bens best", 120)
         text("Changes save immediately on Android and are applied to the watch with the next delivered SMS. Previously calibrated watch settings are preserved until you edit them.")
@@ -164,7 +169,7 @@ class MainActivity : Activity() {
                     Toast.LENGTH_SHORT).show()
             }
         }
-        text("Outgoing CW: in Send mode, double-press Back to review, then Select to hand the draft to Android. The phone asks you to choose a recipient and approve sending; no SMS is sent automatically.")
+        text("Outgoing CW: in Send mode, triple-press Back to prepare your draft. After optional local spellcheck, the watch shows a corrected proposal. Press Select on the watch to reply through Google Messages' available notification Reply action, or Back to cancel. If that action is unavailable, the app will not send anything.")
     }
 
     override fun onDestroy() {
