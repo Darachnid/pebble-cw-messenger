@@ -1,4 +1,5 @@
 #include <pebble.h>
+#include "send.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -357,12 +358,23 @@ static void back_double(ClickRecognizerRef recognizer, void *context) {
   if (s_playing) stop_playback();
 }
 
+static void enter_send(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
+  (void)context;
+  // The receive stream is stopped before giving the TX stream the speaker.
+  stop_playback();
+  s_calibrating = false;
+  update_footer();
+  cw_send_open(MORSE_WPM, TONE_HZ, s_volume);
+}
+
 static void clicks(void *context) {
   (void)context;
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click);
   window_long_click_subscribe(BUTTON_ID_SELECT, 700, select_long, NULL);
   window_single_click_subscribe(BUTTON_ID_UP, volume_up);
   window_single_click_subscribe(BUTTON_ID_DOWN, volume_down);
+  window_long_click_subscribe(BUTTON_ID_DOWN, 700, enter_send, NULL);
   window_single_click_subscribe(BUTTON_ID_BACK, back_single);
   window_multi_click_subscribe(BUTTON_ID_BACK, 2, 2,
                                BACK_DOUBLE_MS, true, back_double);
@@ -431,6 +443,7 @@ static void init(void) {
 
 static void deinit(void) {
   stop_playback();
+  cw_send_deinit();
   window_destroy(s_window);
 }
 
