@@ -4,15 +4,13 @@ import android.app.Notification
 import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import io.rebble.pebblekit2.client.DefaultPebbleSender
-import io.rebble.pebblekit2.common.model.PebbleDictionaryItem
-import io.rebble.pebblekit2.common.model.TransmissionResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.Normalizer
 
 /**
@@ -23,6 +21,9 @@ import java.text.Normalizer
 class SmsNotificationListener : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sentRecently = LinkedHashMap<String, Int>()
+    // Process launches/transfers serially: two incoming SMS notifications must
+    // not race to open the watch or discard each other's AppMessage.
+    private val deliveryLock = Mutex()
 
     private fun cwFriendly(input: String, max: Int): String {
         val normalized = Normalizer.normalize(input, Normalizer.Form.NFKD)
@@ -79,29 +80,13 @@ class SmsNotificationListener : NotificationListenerService() {
         }
 
         scope.launch {
-            val pebble = DefaultPebbleSender(this@SmsNotificationListener)
-            var transferred = false
-            try {
-                val started = pebble.startAppOnTheWatch(CwTransport.APP_UUID)
-                if (started?.values?.any { it is TransmissionResult.Success } != true) {
-                    return@launch
-                }
-                delay(800)
-                repeat(2) { attempt ->
-                    if (transferred) return@repeat
-                    val result = pebble.sendDataToPebble(CwTransport.APP_UUID, mapOf(
-                        CwTransport.KEY_SENDER to PebbleDictionaryItem.Text(title),
-                        CwTransport.KEY_BODY to PebbleDictionaryItem.Text(body)
-                    ))
-                    transferred = result?.values?.any {
-                        it is TransmissionResult.Success
-                    } == true
-                    if (!transferred && attempt == 0) delay(500)
-                }
-            } catch (_: Exception) {
-                // No message content or sender logged to Logcat.
-            } finally {
-                pebble.close()
+            deliveryLock.withLock {
+                // Recheck opt-in in case the user switched it off while this
+                // notification was queued. Do not wake the watch if disabled.
+                val allowed = getSharedPreferences("privacy", MODE_PRIVATE)
+                    .getBoolean("enabled", false)
+                val transferred = allowed &&
+                    CwDelivery.showMessage(this@SmsNotificationListener, title, body)
                 if (!transferred) {
                     synchronized(sentRecently) {
                         if (sentRecently[key] == signature) sentRecently.remove(key)
