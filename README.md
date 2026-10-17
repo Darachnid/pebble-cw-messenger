@@ -169,7 +169,7 @@ If an incoming message vibrates but is silent:
    Morse** from the phone.
 3. Read the footer on the watch. **RX AUDIO DISABLED** indicates the
    stored receive-audio toggle is off; **VOLUME = 0** means the stored
-   volume is muted; **SPEAKER OPEN FAILED** means the PCM stream could
+   volume is muted; **WATCH SOUND MUTED** means the Pebble's Sounds & Haptics / Quiet Time\n   has muted speaker output; **SPEAKER OPEN FAILED** means the PCM stream could
    not be opened. If it still sounds silent with the normal `WPM | Hz`
    footer, the device/PCM path needs hardware debugging.
 4. Receive and send PCM generation were otherwise intentionally left
