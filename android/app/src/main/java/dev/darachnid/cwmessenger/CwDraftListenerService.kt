@@ -9,6 +9,7 @@ import io.rebble.pebblekit2.common.model.PebbleDictionaryItem
 import io.rebble.pebblekit2.common.model.ReceiveResult
 import io.rebble.pebblekit2.common.model.WatchIdentifier
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 /**
  * Two-phase reply: triple Back -> optional local spellcheck -> watch review;
@@ -26,11 +27,17 @@ class CwDraftListenerService : BasePebbleListenerService() {
             ?.value?.trim().orEmpty()
         if (prepare.isNotEmpty()) {
             if (prepare.length > 150) return ReceiveResult.Nack
-            val text = CwLocalReview.spellcheck(this, prepare)
-            CwReplySession.setReview(text)
-            val sent = CwReplySession.display(this, CwTransport.KEY_REVIEW, text)
-            if (!sent) CwReplySession.cancelReview()
-            return if (sent) ReceiveResult.Ack else ReceiveResult.Nack
+            val reviewId = CwReplySession.beginReview()
+            val appContext = applicationContext
+            CwReplySession.background.launch {
+                val text = CwLocalReview.spellcheck(appContext, prepare)
+                if (CwReplySession.finishReview(reviewId, text)) {
+                    val sent = CwReplySession.display(
+                        appContext, CwTransport.KEY_REVIEW, text)
+                    if (!sent) CwReplySession.cancelReview()
+                }
+            }
+            return ReceiveResult.Ack
         }
 
         val confirm = (data[CwTransport.KEY_CONFIRM] as? PebbleDictionaryItem.Text)
