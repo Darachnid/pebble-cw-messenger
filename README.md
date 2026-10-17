@@ -1,48 +1,40 @@
-# Pebble CW Messenger
+# CW Messenger for Pebble Time 2
 
-Native Morse-code watchapp for the **Pebble Time 2 (emery)**.
+Read incoming messages as Morse code via watch speaker and haptics. Current revision is a **self-contained simulated message**; it does not yet capture phone notifications.
 
-## Working prototype (v0.1)
+## v0.2 – message layout and square-wave keying
 
-- Select starts/restarts a demo message: **SOS AC1RV**
-- International Morse code encoding for A-Z, 0-9, and common punctuation
-- PARIS timing ratios: dit=1, dah=3, intra-character gap=1, letter gap=3, word gap=7
-- 20 WPM, 600 Hz sine-wave audio and matching haptic patterns
-- Up/Down change speaker volume in 10% increments during playback
-- Back single click disables audio first, then vibration on a later single click
-- Back double click within 400 ms stops playback
-- Back exits the app while idle
-- Speaker system mute/Quiet Time still take precedence
+- Sender top strip: **Ben**
+- Message body: **good night bens best**
+- Bottom strip: **20 WPM | 600 Hz**
+- No app title, debug lines, or on-screen button instructions
+- The demo begins automatically when opened; **Select** replays it
+- One continuous, **16 kHz signed 8-bit PCM stream**. A constant-amplitude **600 Hz 50%-duty square wave** is gated directly on/off; every Morse space is encoded as actual zero-valued PCM samples. No software attack, decay, fade, reverb, or release tail is applied.
+- Timing: 20 WPM, one dit = 60 ms, one dah = 180 ms, inter-element silence = 60 ms, inter-letter silence = 180 ms, inter-word silence = 420 ms. Stream timing is determined by **PCM sample counts**, not repeated one-shot tone restarts or app timer accuracy.
+- Up/Down adjust volume; Back once stops speaker audio, again disables haptics; double Back within 400 ms stops playback. The single click is delayed by the multi-click detection window. Back exits when not playing.
 
-**MVP limitations:** Demo text, speed, and pitch are constants in the C source, not yet phone-app settings. No notification integration, keying, or AI yet. SDK app timers and vibration hardware may introduce playback jitter; physical CW accuracy and speaker/haptic synchronization still require testing on the Pebble Time 2. Back single-click is delayed by the double-click detection window.
+### Known limitations
 
-## Build and install
+- **Physical speaker ringing** and Pebble's audio pipeline may still cause audible acoustic tails even though the emitted PCM signal is hard-gated. Real-watch listening is necessary to assess this.
+- Vibration is driven by Pebble app timers and hardware, so haptic edges may not precisely align with sample-accurate audio edges.
+- WPM, Hz, and text are still C constants until configuration and notification transport are implemented.
+- No incoming Android notification integration in this demo.
 
-From your Pebble SDK computer:
+## Build and deploy from `manjo`
 
-    git clone https://github.com/Darachnid/pebble-cw-messenger.git
-    cd pebble-cw-messenger
-    pebble build
-    pebble install --cloudpebble
+```bash
+cd ~/pebble-cw-messenger
+git pull origin main
+pebble build
+pebble install --cloudpebble
+```
 
-If you already cloned the project:
+Direct Pebble SDK references: [Speaker and PCM](https://developer.repebble.com/docs/c/User_Interface/Speaker/) · [Clicks](https://developer.repebble.com/docs/c/User_Interface/Window/).
 
-    cd ~/pebble-cw-messenger
-    git pull origin main
-    pebble build
+## Roadmap
 
-The Pebble emulator needs a graphical display (SDL). On a headless server, build normally and install on a paired watch instead.
-
-## Next milestones
-
-1. Measure real-world CW timing and address speaker/vibration scheduling drift.
-2. Add Pebble phone-app settings for WPM, tone frequency, audio, and haptics.
-3. Integrate Android notifications using an Android companion and evaluate phone settings compatibility.
-4. Implement configurable dit/dah paddle and middle-button straight key.
-5. Add explicit, meaning-preserving CW abbreviation rules and optional AI conversion.
-
-## SDK references
-
-- [Buttons and clicks](https://developer.repebble.com/docs/c/User_Interface/Clicks/)
-- [Speaker API](https://developer.repebble.com/docs/c/User_Interface/Speaker/)
-- [Vibration API](https://developer.repebble.com/docs/c/User_Interface/Vibes/)
+1. Measure real hardware audio gating, onset and offset; characterize haptic/audio latency.
+2. Configure tone frequency, WPM and playback mode using Pebble's phone app settings.
+3. Receive phone notifications and populate sender/message fields.
+4. Add sending paddles and straight-key decoder.
+5. Add opt-in text compression using standard CW abbreviations and optional AI summarization.
