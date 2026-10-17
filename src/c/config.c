@@ -70,6 +70,23 @@ static bool read_number(DictionaryIterator *iter, uint32_t key,
   return true;
 }
 
+// Clay's select control may transmit "0"/"1" as a C-string, unlike its
+// sliders and toggles, which transmit integers. Parse both representations.
+static bool read_start_mode(DictionaryIterator *iter, int32_t *dest) {
+  Tuple *t = dict_find(iter, MESSAGE_KEY_StartMode);
+  if (!t) return false;
+  if (t->type == TUPLE_CSTRING) {
+    if (t->length < 2) return false;
+    char c = t->value->cstring[0];
+    if ((c != '0' && c != '1') || t->value->cstring[1] != '\0') return false;
+    *dest = c == '1';
+    return true;
+  }
+  if (t->type != TUPLE_INT && t->type != TUPLE_UINT) return false;
+  *dest = t->value->int32 != 0;
+  return true;
+}
+
 static bool read_text(DictionaryIterator *iter, uint32_t key,
                       char *dest, size_t length) {
   Tuple *t = dict_find(iter, key);
@@ -94,8 +111,7 @@ bool cw_settings_from_appmessage(CwSettings *config, DictionaryIterator *iter) {
                          &config->straight_threshold_pct, 125, 300);
   changed |= read_number(iter, MESSAGE_KEY_SyncMs,
                          &config->sync_ms, -300, 400);
-  changed |= read_number(iter, MESSAGE_KEY_StartMode,
-                         &config->start_mode, 0, 1);
+  changed |= read_start_mode(iter, &config->start_mode);
   changed |= read_number(iter, MESSAGE_KEY_AutoPlay,
                          &config->autoplay, 0, 1);
   changed |= read_text(iter, MESSAGE_KEY_DemoSender,
