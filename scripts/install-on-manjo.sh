@@ -29,18 +29,20 @@ if [[ -d "$PROJECT/.git" ]]; then
     echo "Local changes detected. Commit/stash them first." >&2
     exit 1
   fi
-  git fetch origin main
-  git switch main 2>/dev/null || git switch --track -c main origin/main
-  git merge --ff-only origin/main
+  git fetch origin feature/android-sms-bridge
+  git switch feature/android-sms-bridge 2>/dev/null ||
+    git switch --track -c feature/android-sms-bridge origin/feature/android-sms-bridge
+  git merge --ff-only origin/feature/android-sms-bridge
 elif [[ -e "$PROJECT" ]]; then
   echo "$PROJECT already exists but is not a git checkout." >&2
   exit 1
 else
-  git clone "$REPO" "$PROJECT"
+  git clone --branch feature/android-sms-bridge "$REPO" "$PROJECT"
   cd "$PROJECT"
 fi
 
-echo "==> Compiling for Pebble Time 2"
+echo "==> Compiling native PebbleKit Android SMS watchapp"
+pebble clean
 pebble build
 echo "Build output: $PROJECT/build/pebble-cw-messenger.pbw"
 
