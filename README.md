@@ -1,113 +1,95 @@
-# CW Messenger — Pebble Time 2
+# Pebble CW Messenger
 
-## v0.5 — Pebble phone-app settings (hardware validation pending)
+Morse-code message reader and keyer for **Pebble Time 2**. It has two
+independent modes:
 
-The Pebble phone app's **CW Messenger → Settings** gear is implemented with
-[Clay](https://developer.repebble.com/guides/user-interfaces/app-configuration/).
-Clay renders the form offline inside the existing Pebble app (no separate website or
-Android settings app). Preferences are saved on the watch and applied at the next
-receive playback or Send-mode session.
+- **Receive:** hard-gated square-wave PCM at the selected pitch, with a
+  precomputed vibration pattern that has been hardware-tested for alignment.
+- **Send:** Up/Down Morse paddles and Select straight key, live decoded text,
+  immediate square-wave sidetone, and optional vibration.
 
-Configurable in the phone app:
-- WPM: 5–40 (default 20)
-- Square-wave CW pitch: 200–1500 Hz (default 600)
-- Speaker volume: 0–100% (default 60%)
-- Receive speaker and receive vibration independently
-- Send sidetone and send vibration independently
-- Swap Up/Down paddle assignments
-- Straight-key dah threshold: 125–300% of one dit (default 200%)
-- Receive haptic offset: -300 through +400 ms (default +80, retained from v0.4)
-- Startup screen: Send (default) or Receive
-- Autoplay on opening Receive
-- Simulated sender and simulated message for hardware testing
+## Versions / branches
 
-The already-tested Receive square-wave PCM engine and haptic pattern are retained.
-Send uses direct keyed square-wave tones, so it does not build an audio queue.
-The existing Receive **hold Select** sync-calibration gesture is retained.
+- `main`: stable watch-only Receive/Send with phone-app settings (v0.5).
+- `feature/android-sms-bridge`: **v0.6 beta** incoming Android SMS notification
+  bridge and explicitly confirmed CW-to-SMS composer handoff. Not yet tested
+  on your watch/phone; please do not assume it is production-ready.
 
-**The SMS companion is deliberately not installed in v0.5.** PebbleKit JS
-configuration and PebbleKit Android 2 simultaneous routing require hardware
-validation; there is no default SMS access or outbound messaging yet.
-The work to implement the companion belongs behind a tested integration gate.
+## Install beta watchapp on manjo
 
-## Build/install on `manjo`
-
-```bash
+```sh
 cd ~/pebble-cw-messenger
-git pull --ff-only origin main
+git fetch origin
+git switch -c feature/android-sms-bridge --track origin/feature/android-sms-bridge
+# If you already created the branch, use: git switch feature/android-sms-bridge
 pebble package install @rebble/clay
 pebble build
 pebble install --cloudpebble
 ```
 
-If the SDK reports missing JS dependency, delete **only** stale build artifacts
-using `rm -rf build`, then rerun `pebble package install @rebble/clay` and
-`pebble build`. Do not delete the source repository.
+Phone settings remain inside the **Pebble app → CW Messenger → Settings**.
+Speed 5–40 WPM, pitch 200–1500 Hz, volume, independent audio/haptic modes,
+paddle reversal, straight-key dah threshold, startup mode, autoplay,
+receive sync offset, and demo text are configurable.
 
-Settings should appear next to the installed app in the Pebble phone app.
-After saving, reopen the watchapp and replay the message; the bottom bar should
-reflect your chosen WPM and Hz. In Send mode, hold a paddle to verify its speed
-and use Select as the straight key. Test the reverse-paddle switch separately.
+## Android SMS companion
 
-## Current mode controls
+See **[android/README.md](android/README.md)** for build, installation,
+permissions and tests. Install the companion APK with Android Studio.
+The companion only watches notifications from the *default SMS app*, with
+explicit opt-in and Android Notification Access.
 
-| Mode | Button | Action |
-| --- | --- | --- |
-| Send | Up / Down | Dit / Dah (reversible in Settings) |
-| Send | Hold Up / Down | Repeated dits/dahs |
-| Send | Select | Straight key on button down/up |
-| Send | Back | Return to Receive |
-| Receive | Select | Replay demo text |
-| Receive | Up / Down | Volume (or sync +/-10 ms in calibration) |
-| Receive | Hold Select | Toggle sync calibration |
-| Receive | Hold Down | Open Send mode |
-| Receive | Back | Mute or stop playback |
+The phone tests should first be conducted with the helper's **synthetic
+test message button** (notification access off). Only turn on notification
+access if the synthetic test and Clay settings both work.
 
-## SMS architecture and approval gate
+### Incoming SMS
 
-The eventual Android companion should use **NotificationListenerService**
-with explicit user permission and a narrow allowlist of SMS/messaging apps.
-It will parse permitted sender/body notifications and send them to the Pebble
-watch via **PebbleKit Android 2**. Direct `READ_SMS` is unnecessary for
-incoming notifications. Raw message contents should not be logged.
+1. A new qualifying SMS notification appears on the phone.
+2. The opt-in helper asks the Pebble to open the CW watchapp and transfers
+   the sanitized sender and message over AppMessage.
+3. If the Send screen is idle, the watch switches to Receive and plays Morse.
+4. If the user is actively keying or has a draft, it preserves the draft;
+   the new message is available in Receive and autoplays when shown.
 
-PebbleKit JS hosts the Clay settings; the Pebble platform's mixed native/JS
-AppMessage routing is version-sensitive. We should validate these separately:
+The beta forwards up to 120 characters (with `...` for longer messages),
+and converts unsupported symbols to `?`. It does not silently read the
+remaining length of longer messages.
 
-1. Phone Settings opens and values persist to the watch.
-2. A companion installed on Android can send a synthetic message to the
-   active watchapp while Clay/PKJS is present.
-3. Notification listener permission works and selected SMS notifications
-   reach the watch without accidental duplication or private-content leakage.
-4. Incoming audio begins only under the user's configured privacy policy.
-5. Sending text from the watch opens a **user-confirmed SMS intent** on the
-   phone; never silently send or request SEND_SMS just for convenience.
+### Outgoing SMS draft
 
-We should not claim the whole SMS system works until those tests have passed
-on the specific Pebble app and Android firmware in use.
+1. Compose text on the watch using Up/Down and/or Select.
+2. **Double Back within 400 ms** to open a confirmation screen.
+3. **Press Select** to request transfer of the CW text to the Android
+   companion.
+4. Tap **CW message ready** on the phone to open the system SMS composer.
+5. Choose the recipient and **press Send on the phone**.
 
-## Experimental Android SMS bridge (feature branch only)
+The application does not send SMS automatically, look up contacts, or
+request SEND_SMS. The watch displays **HANDOFF REQUESTED**, not "SMS sent",
+because native delivery is subject to Android/Core and PKJS compatibility.
 
-**Status:** Code prepared, but not yet SDK/Android-built or watch-tested. This is NOT a final release.
+## Validation checklist
 
-- Android project: android/ (import into Android Studio).
-- PebbleKit Android 2: io.rebble.pebblekit2:client:1.3.2.
-- NotificationListenerService listens ONLY to notifications from the default SMS app.
-- Nothing is forwarded until both Android Notification Access and the helper's explicit opt-in switch are enabled.
-- Android does not request READ_SMS, RECEIVE_SMS or SEND_SMS.
-- Watch receives SmsSender (key 14) and SmsBody (key 15). Both match package.json.
-- Incoming SMS replaces the Receive sender/body and autoplays only when the Receive screen is visible and autoplay is enabled.
-- No SMS is transmitted outward, no server is contacted, and message text is not intentionally logged.
-- Sender and message are truncated to 31 and 120 chars for Pebble AppMessage.
+- Verify `pebble build` on manjo, and Android Gradle `assembleDebug`.
+- Confirm Clay Settings still open and change CW pitch/WPM.
+- Confirm the synthetic test appears in Receive and plays in sync.
+- Confirm a real test SMS arrives once and sender/body are correct.
+- Verify a draft is never discarded when an incoming SMS arrives.
+- Confirm double-Back opens the review window and that no SMS is sent
+  without interacting with the phone composer.
+- Only after all tests pass, merge SMS beta into `main`.
 
-### Required tests before enabling real SMS
+## Technical details
 
-1. On main (v0.5), build and verify the Pebble Settings page saves WPM/Hz and Send/Receive preferences.
-2. Build this branch and install the watchapp. In Settings set Startup screen = Receive.
-3. Import the android/ project into Android Studio and install the APK.
-4. BEFORE granting notification access, press Send a harmless test message in the Android helper.
-5. Confirm the watch shows CW Test / test message AND the Clay Settings screen still opens.
-6. Only after that succeeds, enable the helper's SMS toggle, grant Notification Access and test an actual incoming SMS.
-7. If mixed native + PKJS transport is supported, add a user-confirmed Android SMS composer for outgoing drafts.
+- Pebble C SDK: `src/c/`.
+- PebbleKit JS / Clay settings: `src/pkjs/`.
+- Android companion: `android/` (PebbleKit Android 2 1.3.2).
+- Pebble AppMessage keys `SmsSender=14`, `SmsBody=15`, `TxDraft=16`.
+- App UUID `24ae7051-9f15-42a3-805e-e4b4a22bc64d`.
 
-**Compatibility warning:** The Pebble docs traditionally say PKJS and native PebbleKit cannot be combined. Some newer builds allow native phone-to-watch messages alongside PKJS, but this route must be tested on your Pebble Android version. Watch-to-phone messages may still be routed exclusively to PKJS.
+**Known compatibility constraint:** Official Pebble documentation historically
+disallows PebbleKit JS and PebbleKit Android in one watchapp. More recent
+Core-app issue reports suggest phone-to-watch messaging works for multiple
+senders, but watch-to-phone delivery is not uniformly supported in all
+app versions. **Both directions need validation before this is a final release.**
