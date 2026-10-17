@@ -66,7 +66,7 @@ void cw_settings_save(const CwSettings *config) {
 static bool read_number(DictionaryIterator *iter, uint32_t key,
                         int32_t *dest, int32_t min, int32_t max) {
   Tuple *t = dict_find(iter, key);
-  if (!t || !t->value) return false;
+  if (!t) return false;
   int32_t number = 0;
   // Pebble AppMessage encodes toggles as 1 byte and some sliders as 4.
   // Reading int32 unconditionally can use bytes beyond a 1-byte tuple.
@@ -97,23 +97,6 @@ static bool read_number(DictionaryIterator *iter, uint32_t key,
   return true;
 }
 
-// Clay's select control may transmit "0"/"1" as a C-string, unlike its
-// sliders and toggles, which transmit integers. Parse both representations.
-static bool read_start_mode(DictionaryIterator *iter, int32_t *dest) {
-  Tuple *t = dict_find(iter, MESSAGE_KEY_StartMode);
-  if (!t) return false;
-  if (t->type == TUPLE_CSTRING) {
-    if (t->length < 2) return false;
-    char c = t->value->cstring[0];
-    if ((c != '0' && c != '1') || t->value->cstring[1] != '\0') return false;
-    *dest = c == '1';
-    return true;
-  }
-  if (t->type != TUPLE_INT && t->type != TUPLE_UINT) return false;
-  *dest = t->value->int32 != 0;
-  return true;
-}
-
 static bool read_text(DictionaryIterator *iter, uint32_t key,
                       char *dest, size_t length) {
   Tuple *t = dict_find(iter, key);
@@ -138,7 +121,9 @@ bool cw_settings_from_appmessage(CwSettings *config, DictionaryIterator *iter) {
                          &config->straight_threshold_pct, 125, 300);
   changed |= read_number(iter, MESSAGE_KEY_SyncMs,
                          &config->sync_ms, -300, 400);
-  changed |= read_start_mode(iter, &config->start_mode);
+  // read_number supports both numeric and Clay C-string selector tuples.
+  changed |= read_number(iter, MESSAGE_KEY_StartMode,
+                         &config->start_mode, 0, 1);
   changed |= read_number(iter, MESSAGE_KEY_AutoPlay,
                          &config->autoplay, 0, 1);
   changed |= read_text(iter, MESSAGE_KEY_DemoSender,
