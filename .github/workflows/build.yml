@@ -1,0 +1,30 @@
+name: Pebble SDK build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Pebble CLI
+        run: |
+          uv tool install --python 3.13 pebble-tool
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install Pebble SDK
+        run: pebble sdk install latest
+      - name: Compile Pebble Time 2
+        run: pebble build
+      - name: Upload PBW
+        uses: actions/upload-artifact@v4
+        with:
+          name: cw-messenger-emery
+          path: build/pebble-cw-messenger.pbw
+          if-no-files-found: error
