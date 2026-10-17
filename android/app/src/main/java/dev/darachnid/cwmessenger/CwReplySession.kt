@@ -6,6 +6,9 @@ import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent
 import android.service.notification.StatusBarNotification
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import io.rebble.pebblekit2.client.DefaultPebbleSender
 import io.rebble.pebblekit2.common.model.PebbleDictionaryItem
 import io.rebble.pebblekit2.common.model.TransmissionResult
@@ -16,6 +19,7 @@ import io.rebble.pebblekit2.common.model.TransmissionResult
  * the binding disappears rather than risk replying to the wrong person.
  */
 internal object CwReplySession {
+    val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var notificationKey: String? = null
     private var replyAction: Notification.Action? = null
     private var review: String? = null
@@ -34,9 +38,16 @@ internal object CwReplySession {
     }
 
     @Synchronized
-    fun setReview(text: String): Long {
-        review = text
+    fun beginReview(): Long {
+        review = null
         return ++reviewId
+    }
+
+    @Synchronized
+    fun finishReview(id: Long, text: String): Boolean {
+        if (id != reviewId) return false
+        review = text
+        return true
     }
 
     @Synchronized
