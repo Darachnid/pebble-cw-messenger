@@ -40,6 +40,9 @@ else
   cd "$PROJECT"
 fi
 
+echo "==> Installing Pebble's offline Clay settings dependency"
+pebble package install @rebble/clay
+
 echo "==> Compiling for Pebble Time 2"
 pebble build
 echo "Build output: $PROJECT/build/pebble-cw-messenger.pbw"
