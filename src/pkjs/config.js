@@ -1,6 +1,12 @@
 module.exports = [
   { "type": "heading", "defaultValue": "CW Messenger" },
-  { "type": "text", "defaultValue": "Changes save to the watch and take effect on the next playback/keying session. No SMS integration is enabled in this build." },
+  { "type": "text", "defaultValue": "Changes to CW timing apply on the next playback or keying session. Notification reading is experimental and only operates while CW Messenger is open." },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Incoming SMS via Pebble (Preview)" },
+    { "type": "text", "defaultValue": "No Android helper needed. Requires Pebble mobile app 1.15+, experimental plugins enabled, and Notifications permission. Only works while CW Messenger is open." },
+    { "type": "toggle", "messageKey": "NotifEnabled", "label": "Read new message notifications as CW", "defaultValue": false },
+    { "type": "input", "messageKey": "NotifApps", "label": "Allowed SMS app names (comma-separated)", "defaultValue": "Messages", "attributes": { "maxlength": 96 }, "description": "Must match the app name in the Android notification shade, e.g. Messages. Other apps are ignored." }
+  ]},
   { "type": "section", "items": [
     { "type": "heading", "defaultValue": "CW Timing and Sound" },
     { "type": "slider", "messageKey": "Wpm", "label": "Speed (WPM)", "defaultValue": 20, "min": 5, "max": 40, "step": 1 },
@@ -33,7 +39,7 @@ module.exports = [
   { "type": "section", "items": [
     { "type": "heading", "defaultValue": "Demo Message" },
     { "type": "input", "messageKey": "DemoSender", "defaultValue": "Ben", "label": "Sample sender", "attributes": { "maxlength": 31 } },
-    { "type": "input", "messageKey": "DemoMessage", "defaultValue": "good night bens best", "label": "Sample message", "attributes": { "maxlength": 120 }, "description": "This only changes the demo. Real messages require the Android integration." }
+    { "type": "input", "messageKey": "DemoMessage", "defaultValue": "good night bens best", "label": "Sample message", "attributes": { "maxlength": 120 }, "description": "This is the fallback demo. SMS preview uses notifications only while the watchapp is open." }
   ]},
   { "type": "submit", "defaultValue": "Save CW Settings" }
 ];
