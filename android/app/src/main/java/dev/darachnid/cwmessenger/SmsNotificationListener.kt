@@ -67,9 +67,6 @@ class SmsNotificationListener : NotificationListenerService() {
         }
         if (title.isBlank() || body.isBlank()) return
 
-        // Bind the current incoming conversation to its explicit Android
-        // notification Reply action. Sender titles are not phone numbers.
-        CwReplySession.remember(sbn);
 
         val key = sbn.key
         val signature = (title + "\u0000" + body + "\u0000" + sbn.postTime).hashCode()
@@ -85,6 +82,8 @@ class SmsNotificationListener : NotificationListenerService() {
 
         scope.launch {
             deliveryLock.withLock {
+                // Only a genuinely new SMS may update the reply target.
+                CwReplySession.remember(sbn)
                 // Recheck opt-in in case the user switched it off while this
                 // notification was queued. Do not wake the watch if disabled.
                 val allowed = getSharedPreferences("privacy", MODE_PRIVATE)
