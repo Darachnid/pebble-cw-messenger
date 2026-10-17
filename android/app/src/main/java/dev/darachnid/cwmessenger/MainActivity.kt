@@ -2,108 +2,169 @@ package dev.darachnid.cwmessenger
 
 import android.Manifest
 import android.app.Activity
-import android.os.Build
-import android.content.pm.PackageManager
-import android.widget.Toast
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputFilter
+import android.text.TextWatcher
+import android.text.Editable
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
-import io.rebble.pebblekit2.client.DefaultPebbleSender
-import io.rebble.pebblekit2.common.model.PebbleDictionaryItem
+import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 /**
- * Explicit opt-in: never forward notifications without BOTH Android
- * notification-listener access and the user-controlled in-app toggle.
+ * The native Android companion replaces Clay: native + PKJS cannot both route
+ * CW Messenger's AppMessages. CW preferences are applied to the watch with
+ * the next incoming SMS; edits never automatically open the watchapp.
  */
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val prefs = getSharedPreferences("privacy", MODE_PRIVATE)
-        val root = LinearLayout(this).apply {
+        val privacy = getSharedPreferences("privacy", MODE_PRIVATE)
+        val settings = CwPreferences.prefs(this)
+        val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 48, 32, 32)
+            setPadding(32, 36, 32, 56)
         }
-        fun text(value: String) = root.addView(TextView(this).apply {
-            text = value
-            textSize = 16f
-            setPadding(0, 0, 0, 24)
-        })
-        text("CW Messenger — experimental SMS receiver")
-        text("Only notifications from your DEFAULT SMS app are eligible. " +
-             "Message content is forwarded directly to your paired Pebble, " +
-             "not uploaded to a server. Turn this off anytime.")
-        val allow = Switch(this).apply {
-            text = "Forward incoming SMS to Pebble"
-            isChecked = prefs.getBoolean("enabled", false)
-            setOnCheckedChangeListener { _, checked ->
-                prefs.edit().putBoolean("enabled", checked).apply()
-            }
+        val scroll = ScrollView(this).apply { addView(layout) }
+        setContentView(scroll)
+
+        fun text(value: String, size: Float = 15f) {
+            layout.addView(TextView(this).apply {
+                this.text = value
+                textSize = size
+                setPadding(0, 10, 0, 14)
+            })
         }
-        root.addView(allow)
-        root.addView(Button(this).apply {
-            text = "Grant Android notification access"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }
-        })
-        root.addView(Button(this).apply {
-            text = "Allow draft handoff notifications"
-            setOnClickListener {
-                if (Build.VERSION.SDK_INT >= 33 &&
-                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-                        PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 44)
-                } else {
-                    Toast.makeText(this@MainActivity,
-                        "Draft notifications already allowed on this Android version.",
-                        Toast.LENGTH_LONG).show()
-                }
-            }
-        })
-        root.addView(Button(this).apply {
-            text = "Send a harmless test message to Pebble"
-            setOnClickListener {
-                scope.launch {
-                    val connection = DefaultPebbleSender(this@MainActivity)
-                    try {
-                        connection.startAppOnTheWatch(CwTransport.APP_UUID)
-                        kotlinx.coroutines.delay(1000)
-                        val result = connection.sendDataToPebble(
-                            CwTransport.APP_UUID, mapOf(
-                                CwTransport.KEY_SENDER to PebbleDictionaryItem.Text("CW Test"),
-                                CwTransport.KEY_BODY to PebbleDictionaryItem.Text("test message")
-                            )
-                        )
-                        Toast.makeText(this@MainActivity,
-                            "Pebble test transfer: " + result::class.java.simpleName,
-                            Toast.LENGTH_LONG).show()
-                    } catch (ex: Exception) {
-                        Toast.makeText(this@MainActivity,
-                            "Pebble connection failed. Check pairing and companion support.",
-                            Toast.LENGTH_LONG).show()
-                    } finally {
-                        connection.close()
+        fun toggle(label: String, name: String, default: Boolean = true,
+                   isPrivacy: Boolean = false) {
+            val value = if (isPrivacy) privacy.getBoolean(name, default)
+                else settings.getBoolean(name, default)
+            layout.addView(Switch(this).apply {
+                this.text = label
+                isChecked = value
+                setOnCheckedChangeListener { _, state ->
+                    if (isPrivacy) privacy.edit().putBoolean(name, state).apply()
+                    else {
+                        settings.edit().putBoolean(name, state).apply()
+                        CwPreferences.markConfigured(this@MainActivity)
                     }
                 }
+            })
+        }
+        fun slider(label: String, name: String, low: Int, high: Int,
+                   step: Int, fallback: Int) {
+            val labelView = TextView(this).apply {
+                textSize = 15f
+                setPadding(0, 16, 0, 0)
             }
-        })
-        text("To send from the watch: double-press Back in SEND CW, then press " +
-             "Select to hand the CW draft to this phone. Tap the phone notification, " +
-             "choose a recipient and press Send in the messaging app. " +
-             "Sending never happens automatically.")
-        setContentView(root)
+            layout.addView(labelView)
+            val bar = SeekBar(this).apply {
+                max = (high - low) / step
+                progress = ((settings.getInt(name, fallback) - low) / step)
+                    .coerceIn(0, max)
+            }
+            labelView.text = "$label: ${low + bar.progress * step}"
+            bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar?, progress: Int, fromUser: Boolean
+                ) {
+                    if (!fromUser) return
+                    val value = low + progress * step
+                    labelView.text = "$label: $value"
+                    settings.edit().putInt(name, value).apply()
+                    CwPreferences.markConfigured(this@MainActivity)
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+            layout.addView(bar)
+        }
+        fun input(label: String, name: String, fallback: String, limit: Int) {
+            text(label)
+            layout.addView(EditText(this).apply {
+                setSingleLine(true)
+                filters = arrayOf(InputFilter.LengthFilter(limit))
+                setText(settings.getString(name, fallback) ?: fallback)
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, c: Int, f: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, count: Int) {
+                        settings.edit().putString(name, s?.toString() ?: "").apply()
+                        CwPreferences.markConfigured(this@MainActivity)
+                    }
+                    override fun afterTextChanged(s: Editable?) {}
+                })
+            })
+        }
+        fun action(label: String, listener: () -> Unit) {
+            layout.addView(Button(this).apply {
+                text = label
+                setOnClickListener { listener() }
+            })
+        }
+
+        text("CW Messenger", 24f)
+        text("Background SMS → Morse on Pebble Time 2. A new SMS from the phone's default messaging app opens Receive. The watch automatically closes after playback unless you interact with it.")
+        toggle("Enable background incoming SMS", "enabled", false, true)
+        action("Grant notification access") {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+        text("Android notification access lets this service see notification content. We filter messages from the default SMS app and do not upload them to a server. The service requires explicit Android permission and the enabled switch.")
+
+        text("CW playback", 20f)
+        slider("Speed (WPM)", "wpm", 5, 40, 1, 20)
+        slider("Square-wave pitch (Hz)", "tone_hz", 200, 1500, 25, 600)
+        slider("Speaker volume", "volume", 0, 100, 5, 60)
+        slider("Haptic alignment (ms)", "sync_ms", -300, 400, 10, 80)
+        toggle("Receive sound", "rx_audio")
+        toggle("Receive vibrations", "rx_vibe")
+
+        text("Sending / keyer", 20f)
+        toggle("Send sidetone", "tx_audio")
+        toggle("Send vibrations", "tx_vibe")
+        toggle("Reverse Up/Down dits and dahs", "reverse", false)
+        slider("Straight-key dah threshold (% of dit)", "threshold", 125, 300, 25, 200)
+
+        text("Optional manual Receive demo", 20f)
+        input("Sample sender", "demo_sender", "Ben", 31)
+        input("Sample message", "demo_message", "good night bens best", 120)
+        text("Changes save immediately on Android and are applied to the watch with the next delivered SMS. Previously calibrated watch settings are preserved until you edit them.")
+
+        action("Test background launch and Morse") {
+            scope.launch {
+                val delivered = CwDelivery.showMessage(
+                    this@MainActivity, "CW Test", "good night bens best")
+                Toast.makeText(this@MainActivity,
+                    if (delivered) "CW test delivered to Pebble"
+                    else "CW test not delivered. Check Pebble pairing / watch app installation.",
+                    Toast.LENGTH_LONG).show()
+            }
+        }
+        action("Allow outgoing CW draft notifications") {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 44)
+            } else {
+                Toast.makeText(this, "Draft notification permission already available.",
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+        text("Outgoing CW: in Send mode, double-press Back to review, then Select to hand the draft to Android. The phone asks you to choose a recipient and approve sending; no SMS is sent automatically.")
     }
 
     override fun onDestroy() {
