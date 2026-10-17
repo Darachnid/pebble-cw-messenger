@@ -9,7 +9,7 @@
 #define TX_TEXT_CAP 160
 #define TX_CODE_CAP 12
 #define TX_VIBE_MAX 10000u
-#define TX_BACK_DOUBLE_MS 400
+#define TX_BACK_TRIPLE_MS 400
 
 typedef struct {
   char letter;
@@ -37,6 +37,8 @@ static Window *s_window;
 static Window *s_confirm_window;
 static TextLayer *s_confirm_text;
 static char s_confirm_label[256];
+static char s_review_text[161];
+static bool s_review_ready;
 static TextLayer *s_title_layer;
 static TextLayer *s_message_layer;
 static TextLayer *s_code_layer;
@@ -297,40 +299,39 @@ static void straight_up(ClickRecognizerRef recognizer, void *context) {
   begin_paddle();
 }
 
-// Double BACK opens a confirmation, never sends anything automatically.
-// AppMessage may be routed to PKJS instead of the native companion on some
-// Pebble Android versions; the watch must not claim an SMS was delivered.
+// Triple Back sends a draft for local spellcheck, with a second watch
+// confirmation required before sending the reviewed message.
 static void confirm_redraw(const char *heading) {
   snprintf(s_confirm_label, sizeof(s_confirm_label),
-           "%s\n\n%.130s\n\nSELECT: TO PHONE\nBACK: CANCEL",
-           heading, s_text);
+           "%.35s\n\n%.120s\n\n%s", heading,
+           s_review_ready ? s_review_text : s_text,
+           s_review_ready ? "SELECT: SEND\nBACK: CANCEL" :
+                            "WAIT FOR REVIEW\nBACK: CANCEL");
   if (s_confirm_text) text_layer_set_text(s_confirm_text, s_confirm_label);
 }
-
 static void confirm_send_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
-  if (!s_text_length) return;
+  if (!s_review_ready) return;
   DictionaryIterator *iter = NULL;
   AppMessageResult result = app_message_outbox_begin(&iter);
   if (result == APP_MSG_OK && iter) {
-    dict_write_cstring(iter, MESSAGE_KEY_TxDraft, s_text);
+    dict_write_cstring(iter, MESSAGE_KEY_DraftConfirm, s_review_text);
     result = app_message_outbox_send();
   }
-  if (result == APP_MSG_OK) confirm_redraw("HANDOFF REQUESTED");
-  else confirm_redraw("PHONE LINK FAILED");
+  if (result == APP_MSG_OK) {
+    s_review_ready = false;
+    confirm_redraw("SEND REQUESTED");
+  } else confirm_redraw("PHONE LINK FAILED");
 }
-
 static void confirm_cancel_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   window_stack_pop(true);
 }
-
 static void confirm_clicks(void *context) {
   (void)context;
   window_single_click_subscribe(BUTTON_ID_SELECT, confirm_send_click);
   window_single_click_subscribe(BUTTON_ID_BACK, confirm_cancel_click);
 }
-
 static void confirm_load(Window *window) {
   GRect bounds = layer_get_bounds(window_get_root_layer(window));
   s_confirm_text = text_layer_create(GRect(8, 12,
@@ -338,21 +339,17 @@ static void confirm_load(Window *window) {
   text_layer_set_font(s_confirm_text, fonts_get_system_font(FONT_KEY_GOTHIC_18));
   text_layer_set_text_alignment(s_confirm_text, GTextAlignmentLeft);
   text_layer_set_overflow_mode(s_confirm_text, GTextOverflowModeWordWrap);
-  layer_add_child(window_get_root_layer(window),
-                  text_layer_get_layer(s_confirm_text));
-  confirm_redraw("SEND SMS DRAFT?");
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(s_confirm_text));
+  confirm_redraw("SPELLCHECK");
 }
-
 static void confirm_unload(Window *window) {
   (void)window;
   text_layer_destroy(s_confirm_text);
   s_confirm_text = NULL;
 }
-
-static void back_double_click(ClickRecognizerRef recognizer, void *context) {
+static void back_triple_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   if (!s_text_length && !s_code_length) return;
-  // Finish any partial character before opening the confirmation.
   cancel_timer(&s_mark_timer);
   cancel_timer(&s_gap_timer);
   cancel_timer(&s_letter_timer);
@@ -362,6 +359,8 @@ static void back_double_click(ClickRecognizerRef recognizer, void *context) {
   s_up_held = s_down_held = s_straight_held = false;
   s_up_pending = s_down_pending = false;
   finish_letter();
+  if (!s_text_length) return;
+  s_review_ready = false;
   if (!s_confirm_window) {
     s_confirm_window = window_create();
     window_set_click_config_provider(s_confirm_window, confirm_clicks);
@@ -371,8 +370,28 @@ static void back_double_click(ClickRecognizerRef recognizer, void *context) {
     });
   }
   window_stack_push(s_confirm_window, true);
+  DictionaryIterator *iter = NULL;
+  AppMessageResult result = app_message_outbox_begin(&iter);
+  if (result == APP_MSG_OK && iter) {
+    dict_write_cstring(iter, MESSAGE_KEY_TxDraft, s_text);
+    result = app_message_outbox_send();
+  }
+  if (result != APP_MSG_OK) confirm_redraw("PHONE LINK FAILED");
 }
-
+void cw_send_receive_review(const char *text) {
+  if (!text || !s_confirm_window || !s_confirm_text ||
+      window_stack_get_top_window() != s_confirm_window) return;
+  strncpy(s_review_text, text, sizeof(s_review_text) - 1);
+  s_review_text[sizeof(s_review_text)-1] = '\0';
+  s_review_ready = (s_review_text[0] != '\0');
+  confirm_redraw(s_review_ready ? "REVIEW REPLY" : "NO REVIEW TEXT");
+}
+void cw_send_receive_status(const char *status) {
+  if (!status || !s_confirm_window || !s_confirm_text ||
+      window_stack_get_top_window() != s_confirm_window) return;
+  s_review_ready = false;
+  confirm_redraw(status);
+}
 static void back_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
   window_stack_pop(true);
@@ -384,8 +403,8 @@ static void configure_clicks(void *context) {
   window_raw_click_subscribe(BUTTON_ID_DOWN, down_down, down_up, NULL);
   window_raw_click_subscribe(BUTTON_ID_SELECT, straight_down, straight_up, NULL);
   window_single_click_subscribe(BUTTON_ID_BACK, back_click);
-  window_multi_click_subscribe(BUTTON_ID_BACK, 2, 2, TX_BACK_DOUBLE_MS,
-                               true, back_double_click);
+  window_multi_click_subscribe(BUTTON_ID_BACK, 3, 3, TX_BACK_TRIPLE_MS,
+                               true, back_triple_click);
 }
 
 static void stop_session(void) {
