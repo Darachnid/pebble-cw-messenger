@@ -9,7 +9,7 @@ python3 - <<'PY'
 import json, re
 from pathlib import Path
 version = json.loads(Path("package.json").read_text())["version"]
-if not re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+", version):
+if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
     raise SystemExit(f"Invalid Pebble app version {version!r}: expected N.N.N")
 print("Pebble app version:", version)
 PY
