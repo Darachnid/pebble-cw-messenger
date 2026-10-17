@@ -85,7 +85,7 @@ because native delivery is subject to Android/Core and PKJS compatibility.
 - Pebble C SDK: `src/c/`.
 - PebbleKit JS / Clay settings: `src/pkjs/`.
 - Android companion: `android/` (PebbleKit Android 2 1.3.2).
-- Pebble AppMessage keys `SmsSender=14`, `SmsBody=15`, `TxDraft=16`.
+- Pebble AppMessage keys `SmsSender=10014`, `SmsBody=10015`, `TxDraft=10016` (confirm against generated SDK header).
 - App UUID `24ae7051-9f15-42a3-805e-e4b4a22bc64d`.
 
 **Known compatibility constraint:** Official Pebble documentation historically
