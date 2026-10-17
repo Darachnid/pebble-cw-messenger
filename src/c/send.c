@@ -351,7 +351,7 @@ static void confirm_unload(Window *window) {
 
 static void back_double_click(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer; (void)context;
-  if (!s_text_length) return;
+  if (!s_text_length && !s_code_length) return;
   // Finish any partial character before opening the confirmation.
   cancel_timer(&s_mark_timer);
   cancel_timer(&s_gap_timer);
