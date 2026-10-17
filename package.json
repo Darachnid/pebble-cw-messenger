@@ -1,7 +1,7 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "0.5.0",
+  "version": "0.6.0-dev",
   "keywords": [
     "pebble-app",
     "morse-code",
@@ -36,13 +36,25 @@
       "StartMode",
       "AutoPlay",
       "DemoSender",
-      "DemoMessage"
+      "DemoMessage",
+      "SmsSender",
+      "SmsBody"
     ],
     "resources": {
       "media": []
     },
     "capabilities": [
       "configurable"
-    ]
+    ],
+    "companionApp": {
+      "android": {
+        "url": "https://github.com/Darachnid/pebble-cw-messenger/tree/feature/android-sms-bridge/android",
+        "apps": [
+          {
+            "package": "dev.darachnid.cwmessenger"
+          }
+        ]
+      }
+    }
   }
 }
