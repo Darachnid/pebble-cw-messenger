@@ -1,17 +1,19 @@
 #include <pebble.h>
 #include "send.h"
 #include "config.h"
+#include <message_keys.auto.h>
+#include <string.h>
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 
 // Values come from the saved Pebble phone-app settings.
-#define MESSAGE_SENDER (s_cfg.sender)
-#define MESSAGE_TEXT (s_cfg.demo_text)
+#define MESSAGE_SENDER (s_rx_sender)
+#define MESSAGE_TEXT (s_rx_text)
 #define MORSE_WPM (s_cfg.wpm)
 #define TONE_HZ (s_cfg.tone_hz)
 #define SAMPLE_RATE 16000u
-#define MAX_SEGMENTS 512
+#define MAX_SEGMENTS 2048
 #define PCM_CHUNK 512
 #define BACK_DOUBLE_MS 400
 #define SYNC_PREF_KEY 701
@@ -29,6 +31,10 @@ typedef struct {
 } MorseSegment;
 
 static CwSettings s_cfg;
+static char s_rx_sender[32];
+static char s_rx_text[128];
+static bool s_live_notification;
+static bool s_notification_pending;
 static Window *s_window;
 static TextLayer *s_sender_layer;
 static TextLayer *s_message_layer;
@@ -426,6 +432,16 @@ static void window_load(Window *window) {
   layer_add_child(root, text_layer_get_layer(s_footer_layer));
 }
 
+// The app may receive a phone notification while the user is keying. Preserve
+// the incoming message and do not disrupt the TX sidetone or existing draft.
+static void rx_window_appear(Window *window) {
+  (void)window;
+  if (s_notification_pending) {
+    s_notification_pending = false;
+    if (s_cfg.autoplay) start_playback();
+  }
+}
+
 static void window_unload(Window *window) {
   (void)window;
   text_layer_destroy(s_footer_layer);
@@ -438,19 +454,50 @@ static void window_unload(Window *window) {
 
 static void inbox_received(DictionaryIterator *iter, void *context) {
   (void)context;
+  Tuple *sender = dict_find(iter, MESSAGE_KEY_SmsSender);
+  Tuple *body = dict_find(iter, MESSAGE_KEY_SmsBody);
+  if (body && body->type == TUPLE_CSTRING && body->length > 1) {
+    if (sender && sender->type == TUPLE_CSTRING && sender->length > 1) {
+      strncpy(s_rx_sender, sender->value->cstring, sizeof(s_rx_sender)-1);
+      s_rx_sender[sizeof(s_rx_sender)-1] = '\0';
+    } else {
+      strcpy(s_rx_sender, "Message");
+    }
+    strncpy(s_rx_text, body->value->cstring, sizeof(s_rx_text)-1);
+    s_rx_text[sizeof(s_rx_text)-1] = '\0';
+    s_live_notification = true;
+    if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
+    if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
+    // The Receive page is not necessarily foreground during CW composition.
+    if (window_stack_get_top_window() == s_window) {
+      s_notification_pending = false;
+      if (s_cfg.autoplay) start_playback();
+    } else {
+      s_notification_pending = true;
+    }
+    return;
+  }
   if (!cw_settings_from_appmessage(&s_cfg, iter)) return;
   s_volume = (uint8_t)s_cfg.volume;
   s_sync_ms = (int16_t)s_cfg.sync_ms;
-  if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
-  if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
+  if (!s_live_notification) {
+    strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender)-1);
+    s_rx_sender[sizeof(s_rx_sender)-1] = '\0';
+    strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text)-1);
+    s_rx_text[sizeof(s_rx_text)-1] = '\0';
+    if (s_sender_layer) text_layer_set_text(s_sender_layer, MESSAGE_SENDER);
+    if (s_message_layer) text_layer_set_text(s_message_layer, MESSAGE_TEXT);
+  }
   speaker_set_volume(s_volume);
   update_footer();
-  // Active streaming and a running transmit keyer are NOT interrupted.
-  // Fresh values are used on the next replay/opening of Send.
 }
 
 static void init(void) {
   cw_settings_load(&s_cfg);
+  strncpy(s_rx_sender, s_cfg.sender, sizeof(s_rx_sender)-1);
+  s_rx_sender[sizeof(s_rx_sender)-1] = '\0';
+  strncpy(s_rx_text, s_cfg.demo_text, sizeof(s_rx_text)-1);
+  s_rx_text[sizeof(s_rx_text)-1] = '\0';
   s_volume = (uint8_t)s_cfg.volume;
   s_sync_ms = (int16_t)s_cfg.sync_ms;
   app_message_register_inbox_received(inbox_received);
@@ -459,6 +506,7 @@ static void init(void) {
   window_set_click_config_provider(s_window, clicks);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = window_load,
+    .appear = rx_window_appear,
     .unload = window_unload
   });
   // Start in the user-configured mode, preserving the tested RX and TX paths.
