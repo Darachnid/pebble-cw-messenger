@@ -30,8 +30,10 @@ def build(ctx):
     binaries = []
 
     cached_env = ctx.env
+    src_c = ctx.path.find_node('src/c').abspath()
     for platform in ctx.env.TARGET_PLATFORMS:
         ctx.env = ctx.all_envs[platform]
+        ctx.env.append_value('INCLUDES', [src_c])
         ctx.set_group(ctx.env.PLATFORM_NAME)
         app_elf = '{}/pebble-app.elf'.format(ctx.env.BUILD_DIR)
         ctx.pbl_build(source=ctx.path.ant_glob('src/c/**/*.c'), target=app_elf, bin_type='app')

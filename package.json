@@ -6,7 +6,7 @@
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "pebble-cw-messenger",
+    "displayName": "K2 Controller",
     "uuid": "24ae7051-9f15-42a3-805e-e4b4a22bc64d",
     "sdkVersion": "3",
     "enableMultiJS": true,
