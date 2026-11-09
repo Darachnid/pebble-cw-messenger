@@ -42,6 +42,11 @@ internal class CwMessageStore(context: Context) :
         db.execSQL("CREATE INDEX idx_thread ON messages(thread_key, received_at DESC)")
     }
 
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        db.execSQL("DROP TABLE IF EXISTS messages")
+        onCreate(db)
+    }
+
     fun insert(
         threadKey: String,
         sender: String,
