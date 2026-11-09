@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Only Android notification access and optional outgoing-draft notification.
+       No READ_SMS, RECEIVE_SMS or SEND_SMS. -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.SENDTO"/>
+      <data android:scheme="smsto"/>
+    </intent>
+  </queries>
+  <application
+      android:allowBackup="false"
+      android:icon="@mipmap/ic_launcher"
+      android:label="CW SMS Bridge"
+      android:usesCleartextTraffic="true"
+      android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <activity android:name=".UserSettingsActivity"
+        android:exported="false"
+        android:label="User settings" />
+    <activity android:name=".MessagesActivity"
+        android:exported="false"
+        android:label="Messages" />
+    <activity android:name=".MainActivity"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+    <service android:name=".SmsNotificationListener"
+        android:exported="true"
+        android:label="CW Messenger notification access"
+        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService"/>
+      </intent-filter>
+    </service>
+    <!-- PebbleKit2 routes watch-to-phone drafts here. Verified caller selected
+         by BasePebbleListenerService; no direct SMS transmission capability. -->
+    <service android:name=".CwDraftListenerService"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="io.rebble.pebblekit2.RECEIVE_DATA_FROM_WATCH"/>
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

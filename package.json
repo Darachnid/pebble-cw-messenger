@@ -1,17 +1,16 @@
 {
   "name": "pebble-cw-messenger",
   "author": "MakeAwesomeHappen",
-  "version": "1.0.0",
+  "version": "0.6.1",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "K2 Controller",
+    "displayName": "CW Messenger",
     "uuid": "24ae7051-9f15-42a3-805e-e4b4a22bc64d",
     "sdkVersion": "3",
-    "enableMultiJS": true,
+    "enableMultiJS": false,
     "targetPlatforms": [
-      "aplite",
       "basalt",
       "chalk",
       "diorite",
@@ -23,10 +22,54 @@
       "watchface": false
     },
     "messageKeys": [
-      "dummy"
+      "Wpm",
+      "ToneHz",
+      "Volume",
+      "RxAudio",
+      "RxVibe",
+      "TxAudio",
+      "TxVibe",
+      "ReversePaddles",
+      "StraightThreshold",
+      "SyncMs",
+      "StartMode",
+      "AutoPlay",
+      "DemoSender",
+      "DemoMessage",
+      "SmsSender",
+      "SmsBody",
+      "TxDraft",
+      "DraftReview",
+      "DraftConfirm",
+      "DraftStatus",
+      "ShowWelcome",
+      "DemoAutostart"
     ],
+    "capabilities": ["configurable"],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_TILE_SPLASH",
+          "file": "images/tile_splash.png"
+        }
+      ]
+    },
+    "companionApp": {
+      "android": {
+        "apps": [
+          {
+            "package": "dev.darachnid.cwmessenger",
+            "watchapp": "24ae7051-9f15-42a3-805e-e4b4a22bc64d"
+          }
+        ]
+      }
     }
   }
 }

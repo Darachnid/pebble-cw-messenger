@@ -31,12 +31,23 @@ def build(ctx):
 
     cached_env = ctx.env
     src_c = ctx.path.find_node('src/c').abspath()
+    cw_app_sources = [
+        'src/c/pebble-cw-messenger.c',
+        'src/c/config.c',
+        'src/c/send.c',
+        'src/c/cw_ui.c',
+        'src/c/welcome.c',
+        'src/c/cw_straight_key_icon.c',
+    ]
     for platform in ctx.env.TARGET_PLATFORMS:
         ctx.env = ctx.all_envs[platform]
         ctx.env.append_value('INCLUDES', [src_c])
         ctx.set_group(ctx.env.PLATFORM_NAME)
         app_elf = '{}/pebble-app.elf'.format(ctx.env.BUILD_DIR)
-        ctx.pbl_build(source=ctx.path.ant_glob('src/c/**/*.c'), target=app_elf, bin_type='app')
+        ctx.pbl_build(
+            source=[ctx.path.find_node(s) for s in cw_app_sources],
+            target=app_elf,
+            bin_type='app')
 
         if build_worker:
             worker_elf = '{}/pebble-worker.elf'.format(ctx.env.BUILD_DIR)
@@ -49,8 +60,4 @@ def build(ctx):
     ctx.env = cached_env
 
     ctx.set_group('bundle')
-    ctx.pbl_bundle(binaries=binaries,
-                   js=ctx.path.ant_glob(['src/pkjs/**/*.js',
-                                         'src/pkjs/**/*.json',
-                                         'src/common/**/*.js']),
-                   js_entry_file='src/pkjs/index.js')
+    ctx.pbl_bundle(binaries=binaries)

@@ -1,0 +1,73 @@
+package dev.darachnid.cwmessenger
+
+import android.content.Context
+import android.content.SharedPreferences
+import io.rebble.pebblekit2.common.model.PebbleDictionary
+import io.rebble.pebblekit2.common.model.PebbleDictionaryItem
+
+/** Saved locally on Android. The watch persists matching settings on delivery. */
+internal object CwPreferences {
+    fun prefs(context: Context): SharedPreferences =
+        context.getSharedPreferences("cw_settings", Context.MODE_PRIVATE)
+
+    fun bool(context: Context, name: String, default: Boolean = true): Boolean =
+        prefs(context).getBoolean(name, default)
+
+    fun int(context: Context, name: String, default: Int): Int =
+        prefs(context).getInt(name, default)
+
+    // Never overwrite the watch's existing calibrated preferences until the
+    // user has actually edited something on their phone.
+    fun packet(context: Context): PebbleDictionary {
+        val p = prefs(context)
+        val values = mutableMapOf<UInt, PebbleDictionaryItem>()
+        fun number(key: UInt, name: String) {
+            if (p.contains(name)) values[key] = PebbleDictionaryItem.Int32(p.getInt(name, 0))
+        }
+        fun toggle(key: UInt, name: String) {
+            if (p.contains(name)) values[key] = PebbleDictionaryItem.Int32(
+                if (p.getBoolean(name, false)) 1 else 0
+            )
+        }
+        number(CwTransport.KEY_WPM, "wpm")
+        number(CwTransport.KEY_TONE, "tone_hz")
+        // Mirror the displayed phone volume to avoid a saved watch mute.
+        values[CwTransport.KEY_VOLUME] = PebbleDictionaryItem.Int32(
+            p.getInt("volume", 60).coerceIn(0, 100)
+        )
+        // The UI displays Receive sound ON by default. Always transmit that
+        // displayed value, even when the user has never touched the switch.
+        // Otherwise an older watch setting of OFF silently overrides the phone.
+        values[CwTransport.KEY_RX_AUDIO] = PebbleDictionaryItem.Int32(
+            if (p.getBoolean("rx_audio", true)) 1 else 0
+        )
+        toggle(CwTransport.KEY_RX_VIBE, "rx_vibe")
+        toggle(CwTransport.KEY_TX_AUDIO, "tx_audio")
+        toggle(CwTransport.KEY_TX_VIBE, "tx_vibe")
+        toggle(CwTransport.KEY_REVERSE, "reverse")
+        number(CwTransport.KEY_THRESHOLD, "threshold")
+        number(CwTransport.KEY_SYNC, "sync_ms")
+        if (p.contains("demo_sender")) values[CwTransport.KEY_DEMO_SENDER] =
+            PebbleDictionaryItem.Text(p.getString("demo_sender", "") ?: "")
+        if (p.contains("demo_message")) values[CwTransport.KEY_DEMO_MESSAGE] =
+            PebbleDictionaryItem.Text(p.getString("demo_message", "") ?: "")
+        values[CwTransport.KEY_START_MODE] = PebbleDictionaryItem.Int32(
+            if (p.getBoolean("start_mode_send", false)) 0 else 1
+        )
+        values[CwTransport.KEY_AUTOPLAY] = PebbleDictionaryItem.Int32(
+            if (p.getBoolean("autoplay", true)) 1 else 0
+        )
+        toggle(CwTransport.KEY_DEMO_AUTOSTART, "demo_autostart")
+        return values
+    }
+
+    fun packetShowWelcome(context: Context): PebbleDictionary {
+        val payload = packet(context).toMutableMap()
+        payload[CwTransport.KEY_SHOW_WELCOME] = PebbleDictionaryItem.Int32(1)
+        return payload
+    }
+
+    fun markConfigured(context: Context) {
+        prefs(context).edit().putBoolean("configured", true).apply()
+    }
+}

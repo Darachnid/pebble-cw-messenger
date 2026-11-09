@@ -1,36 +1,39 @@
 # pebble-cw-messenger
 
-A Pebble watchapp/watchface written in C using the Pebble SDK.
+Receive SMS on the watch as Morse (audio or vibes); compose replies with **paddle keys** or the **straight key**, via the Android companion.
 
 ## Building & running
 
 ```sh
-pebble build                          # build for all targetPlatforms
-pebble install --emulator emery       # install on the emery emulator
-pebble install --phone <ip>           # install to a paired phone
+pebble build
+pebble install --emulator emery       # rectangular Pebble Time 2
+pebble install --emulator chalk       # round Pebble Time Round
+pebble install --phone <ip>           # paired phone
+./scripts/capture-cw-screenshots.sh   # watch screenshots (emery, chalk, …)
+./scripts/generate-brand-assets.py   # Pebble menu icon (25px) + Android launcher
+./scripts/capture-store-assets.sh    # docs/store marketing PNGs
 ```
 
-## Target platforms
+Round platforms (`chalk`, `gabbro`) use extra side insets and slightly smaller type so header, body, and footer stay inside the circle. Those models have **no speaker** — receive/send CW uses **vibration only**.
 
-`targetPlatforms` in `package.json` controls which watches you build for. The
-modern Pebble hardware is **emery** (Pebble Time 2), **gabbro** (Pebble Round
-2), and **flint** (Pebble 2 Duo); the original Pebble platforms (aplite,
-basalt, chalk, diorite) are included by default for backwards compatibility.
+**First launch** shows a guided welcome tour (SELECT to advance, BACK to go back or skip). The footer shows hints such as `HLD DN: SEND` or `SEL: REPLAY` on live SMS.
+
+## Android companion
+
+See `android/README.md`. Keys in `package.json` must stay aligned with `android/.../CwTransport.kt` (checked by `scripts/validate-native-sms.py`).
+
+## K2 dashboard (experimental)
+
+Sources under `src/c/dashboard/` and `src/c/main.c` are a separate K2 radio face; they are not linked by the default `wscript` (this project builds **CW Messenger**).
 
 ## Project layout
 
 ```
-src/c/           C source for the watchapp
-src/pkjs/        PebbleKit JS (phone-side) source, if any
-worker_src/c/    Background worker source, if any
-resources/       Images, fonts, and other bundled resources
-package.json     Project metadata (UUID, platforms, resources, message keys)
-wscript          Build rules — usually no need to edit
+src/c/           Watchapp (pebble-cw-messenger.c, send.c, config.c, cw_ui.c)
+android/         Native SMS / PebbleKit2 companion
+scripts/         Screenshot and validation helpers
+package.json     UUID, platforms, message keys, companion app
+wscript          Build rules — links CW app sources only
 ```
 
-By default this project is configured as a watchapp. To make it a watchface,
-set `pebble.watchapp.watchface` to `true` in `package.json`.
-
-## Documentation
-
-Full SDK docs, tutorials, and API reference: <https://developer.repebble.com>
+Docs: <https://developer.repebble.com>

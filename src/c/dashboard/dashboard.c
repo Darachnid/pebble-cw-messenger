@@ -1,4 +1,5 @@
 #include "dashboard/dashboard.h"
+#include "dashboard/dashboard_layout.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -23,11 +24,11 @@ static GColor prv_accent_yellow(void) {
 }
 
 static GColor prv_accent_orange(void) {
-  return PBL_IF_COLOR_ELSE(GColorOrange, GColorWhite);
+  return PBL_IF_COLOR_ELSE(GColorMelon, GColorWhite);
 }
 
-static GColor prv_text_primary(void) {
-  return GColorWhite;
+static GColor prv_text_muted(void) {
+  return PBL_IF_COLOR_ELSE(GColorLightGray, GColorWhite);
 }
 
 static GColor prv_bar_empty(void) {
@@ -42,13 +43,15 @@ static GColor prv_field_color(RadioFieldFreshness freshness, GColor when_valid) 
       return prv_accent_yellow();
     case RadioFieldFreshness_Unavailable:
     default:
-      return prv_text_primary();
+      return prv_text_muted();
   }
 }
 
-static void prv_draw_hline(GContext *ctx, GRect bounds, int y) {
-  graphics_context_set_stroke_color(ctx, prv_text_primary());
-  graphics_draw_line(ctx, GPoint(4, y), GPoint(bounds.size.w - 4, y));
+static void prv_draw_header_rule(GContext *ctx, const DashboardLayout *layout) {
+  const int y = layout->y_freq - 4;
+  graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(GColorDarkGray, GColorWhite));
+  graphics_draw_line(ctx, GPoint(layout->inset_x, y),
+                     GPoint(layout->bounds.size.w - layout->inset_x, y));
 }
 
 static void prv_draw_segmented_bar(GContext *ctx, GRect frame, uint8_t filled, GColor fill,
@@ -61,7 +64,11 @@ static void prv_draw_segmented_bar(GContext *ctx, GRect frame, uint8_t filled, G
   for (int i = 0; i < DASH_SEGMENTS; i++) {
     GRect seg = GRect(frame.origin.x + i * (seg_w + gap), frame.origin.y, seg_w, frame.size.h);
     graphics_context_set_fill_color(ctx, (i < filled) ? fill : empty);
+#ifdef PBL_COLOR
+    graphics_fill_rect(ctx, seg, 2, GCornersAll);
+#else
     graphics_fill_rect(ctx, seg, 0, GCornerNone);
+#endif
   }
 }
 
@@ -161,6 +168,7 @@ static void prv_dashboard_update(Layer *layer, GContext *ctx) {
   Dashboard *dash = *(Dashboard **)layer_get_data(layer);
   const RadioState *s = &dash->state;
   GRect bounds = layer_get_bounds(layer);
+  const DashboardLayout layout = dashboard_layout_for_bounds(bounds);
 
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
@@ -169,7 +177,7 @@ static void prv_dashboard_update(Layer *layer, GContext *ctx) {
   GRect rect;
 
   graphics_context_set_text_color(ctx, prv_accent_yellow());
-  rect = GRect(6, 2, 48, 22);
+  rect = GRect(layout.inset_x, layout.y_header, 48, 20);
   graphics_draw_text(ctx, "K2", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
@@ -179,102 +187,99 @@ static void prv_dashboard_update(Layer *layer, GContext *ctx) {
     conn_color = prv_accent_yellow();
   }
   graphics_context_set_text_color(ctx, conn_color);
-  rect = GRect(bounds.size.w - 52, 2, 46, 18);
+  rect = GRect(layout.bounds.size.w - layout.inset_x - 46, layout.y_header, 46, 18);
   graphics_draw_text(ctx, line, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
 
-  GRect filter_box = GRect(bounds.size.w - 50, 18, 44, 16);
+  prv_draw_header_rule(ctx, &layout);
+
+  const int filter_w = layout.content_w < 56 ? layout.content_w : 44;
+  GRect filter_box =
+      GRect(layout.bounds.size.w - layout.inset_x - filter_w, layout.y_filter, filter_w, 16);
   if (s->filter_freshness != RadioFieldFreshness_Unavailable) {
     prv_draw_crystal_filter(ctx, filter_box, s->crystal_bw_hz);
   }
 
   const char *af = prv_audio_filter_label(s->audio_filter);
-  GColor af_color = prv_text_primary();
+  GColor af_color = prv_text_muted();
   if (s->audio_filter != K2AudioFilter_Off) {
     af_color = prv_accent_cyan();
   }
   graphics_context_set_text_color(ctx, prv_field_color(s->audio_filter_freshness, af_color));
-  rect = GRect(bounds.size.w - 50, 34, 44, 14);
+  rect = GRect(filter_box.origin.x, layout.y_filter + 16, filter_w, 14);
   graphics_draw_text(ctx, af, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   graphics_context_set_text_color(ctx, prv_field_color(s->frequency_freshness, GColorWhite));
-  rect = GRect(0, 44, bounds.size.w, 38);
-  graphics_draw_text(ctx, s->frequency_text, fonts_get_system_font(FONT_KEY_LECO_38_BOLD_NUMBERS),
-                     rect, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  rect = GRect(0, layout.y_freq, layout.bounds.size.w, layout.h_freq);
+  graphics_draw_text(ctx, s->frequency_text, fonts_get_system_font(layout.freq_font), rect,
+                     GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
   snprintf(line, sizeof(line), "%s \xE2\x80\xA2 %s", s->mode_text, s->band_text);
   graphics_context_set_text_color(ctx, prv_field_color(s->mode_freshness, prv_accent_orange()));
-  rect = GRect(0, 78, bounds.size.w, 18);
+  rect = GRect(layout.inset_x, layout.y_mode, layout.content_w, 18);
   graphics_draw_text(ctx, line, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-  const int meter_y_label = 96;
-  const int meter_y_bar = 118;
-  const int meter_y_val = 130;
   const int col_gap = 10;
-  const int half_w = (bounds.size.w - 16 - col_gap) / 2;
-  const int left_x = 8;
+  const int half_w = (layout.content_w - col_gap) / 2;
+  const int left_x = layout.inset_x;
   const int right_x = left_x + half_w + col_gap;
-  const int bar_h = 10;
+  const int bar_h = PBL_IF_ROUND_ELSE(8, 10);
   GColor empty_bar = prv_bar_empty();
 
-  graphics_context_set_text_color(ctx, prv_text_primary());
-  rect = GRect(left_x, meter_y_label, half_w, 14);
-  graphics_draw_text(ctx, "S-METER", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
+  graphics_context_set_text_color(ctx, prv_text_muted());
+  rect = GRect(left_x, layout.y_meter_label, half_w, 14);
+  graphics_draw_text(ctx, "S-METER", fonts_get_system_font(FONT_KEY_GOTHIC_14), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-  rect = GRect(right_x, meter_y_label, half_w, 14);
-  graphics_draw_text(ctx, "PWR", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
+  rect = GRect(right_x, layout.y_meter_label, half_w, 14);
+  graphics_draw_text(ctx, "PWR", fonts_get_system_font(FONT_KEY_GOTHIC_14), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
   if (s->s_meter_freshness != RadioFieldFreshness_Unavailable) {
-    prv_draw_segmented_bar(ctx, GRect(left_x, meter_y_bar, half_w, bar_h), s->s_meter_segments,
+    prv_draw_segmented_bar(ctx, GRect(left_x, layout.y_meter_bar, half_w, bar_h), s->s_meter_segments,
                            prv_accent_cyan(), empty_bar);
   }
   if (s->power_freshness != RadioFieldFreshness_Unavailable) {
-    prv_draw_segmented_bar(ctx, GRect(right_x, meter_y_bar, half_w, bar_h), s->power_segments,
+    prv_draw_segmented_bar(ctx, GRect(right_x, layout.y_meter_bar, half_w, bar_h), s->power_segments,
                            prv_accent_blue(), empty_bar);
   }
 
   graphics_context_set_text_color(ctx, prv_field_color(s->s_meter_freshness, prv_accent_cyan()));
-  rect = GRect(left_x, meter_y_val, half_w, 16);
+  rect = GRect(left_x, layout.y_meter_val, half_w, 16);
   graphics_draw_text(ctx, s->s_meter_label, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
   const char *pwr_text =
       (s->power_freshness == RadioFieldFreshness_Unavailable) ? "--" : s->power_label;
   graphics_context_set_text_color(ctx, prv_field_color(s->power_freshness, prv_accent_blue()));
-  rect = GRect(right_x, meter_y_val, half_w, 16);
+  rect = GRect(right_x, layout.y_meter_val, half_w, 16);
   graphics_draw_text(ctx, pwr_text, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-  prv_draw_hline(ctx, bounds, 148);
+  graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(GColorDarkGray, GColorWhite));
+  graphics_draw_line(ctx, GPoint(layout.inset_x, layout.y_divider),
+                     GPoint(layout.bounds.size.w - layout.inset_x, layout.y_divider));
 
-  const int rit_label_y = 152;
-  const int rit_track_y = 166;
-  const int bottom_label_y = 198;
-  const int bottom_value_y = 212;
-
-  graphics_context_set_text_color(ctx, prv_text_primary());
-  rect = GRect(8, rit_label_y, 40, 14);
-  graphics_draw_text(ctx, "RIT", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
+  graphics_context_set_text_color(ctx, prv_text_muted());
+  rect = GRect(left_x, layout.y_rit_label, 40, 14);
+  graphics_draw_text(ctx, "RIT", fonts_get_system_font(FONT_KEY_GOTHIC_14), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-  prv_draw_rit_fader(ctx, GRect(8, rit_track_y, bounds.size.w - 16, 22), s->rit_enabled,
+  prv_draw_rit_fader(ctx, GRect(left_x, layout.y_rit_track, layout.content_w, 22), s->rit_enabled,
                      s->rit_offset_cHz);
 
-  graphics_context_set_text_color(ctx, prv_text_primary());
-  rect = GRect(8, bottom_label_y, 56, 14);
-  graphics_draw_text(ctx, "AGC", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
+  rect = GRect(left_x, layout.y_bottom_label, 56, 14);
+  graphics_draw_text(ctx, "AGC", fonts_get_system_font(FONT_KEY_GOTHIC_14), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-  rect = GRect(bounds.size.w - 56, bottom_label_y, 48, 14);
-  graphics_draw_text(ctx, "NB", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
+  rect = GRect(layout.bounds.size.w - layout.inset_x - 48, layout.y_bottom_label, 48, 14);
+  graphics_draw_text(ctx, "NB", fonts_get_system_font(FONT_KEY_GOTHIC_14), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
 
   const char *agc =
       (s->agc_freshness == RadioFieldFreshness_Unavailable) ? "--" : s->agc_text;
   graphics_context_set_text_color(ctx, prv_field_color(s->agc_freshness, GColorWhite));
-  rect = GRect(8, bottom_value_y, 80, 16);
+  rect = GRect(left_x, layout.y_bottom_val, 80, 16);
   graphics_draw_text(ctx, agc, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
@@ -283,7 +288,7 @@ static void prv_dashboard_update(Layer *layer, GContext *ctx) {
   GColor nb_color =
       (s->noise_blanker == K2NoiseBlanker_Off) ? prv_accent_yellow() : GColorWhite;
   graphics_context_set_text_color(ctx, prv_field_color(s->nb_freshness, nb_color));
-  rect = GRect(bounds.size.w - 80, bottom_value_y, 72, 16);
+  rect = GRect(layout.bounds.size.w - layout.inset_x - 80, layout.y_bottom_val, 72, 16);
   graphics_draw_text(ctx, nb, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), rect,
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
 }
@@ -295,7 +300,7 @@ Dashboard *dashboard_create(void) {
   }
   radio_state_init(&dash->state);
 
-  dash->layer = layer_create_with_data(GRect(0, 0, 200, 228), sizeof(Dashboard *));
+  dash->layer = layer_create_with_data(GRect(0, 0, 0, 0), sizeof(Dashboard *));
   *(Dashboard **)layer_get_data(dash->layer) = dash;
   layer_set_update_proc(dash->layer, prv_dashboard_update);
 

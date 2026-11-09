@@ -1,7 +1,9 @@
 #include <pebble.h>
 
 #include "dashboard/dashboard.h"
+#include "radio/radio_state.h"
 #include "radio/simulated_radio.h"
+#include "transport/phone_bridge.h"
 
 static Window *s_window;
 static Dashboard *s_dashboard;
@@ -23,6 +25,7 @@ static void prv_window_load(Window *window) {
   dashboard_set_state(s_dashboard, &state);
 
   layer_add_child(root, dash_layer);
+  phone_bridge_init(s_dashboard);
 }
 
 static void prv_window_unload(Window *window) {
